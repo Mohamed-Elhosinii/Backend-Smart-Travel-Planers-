@@ -1,23 +1,23 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\moham\\.gemini\\antigravity-ide\\scratch\\smart-travel-planner\\backend\\SmartTravelPlaners.DAL\\SmartTravelPlaners.DAL.csproj": {}
+    "D:\\TripAI\\SmartTravelPlaners.DAL\\SmartTravelPlaners.DAL.csproj": {}
   },
   "projects": {
-    "C:\\Users\\moham\\.gemini\\antigravity-ide\\scratch\\smart-travel-planner\\backend\\SmartTravelPlaners.DAL\\SmartTravelPlaners.DAL.csproj": {
+    "D:\\TripAI\\SmartTravelPlaners.DAL\\SmartTravelPlaners.DAL.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\moham\\.gemini\\antigravity-ide\\scratch\\smart-travel-planner\\backend\\SmartTravelPlaners.DAL\\SmartTravelPlaners.DAL.csproj",
+        "projectUniqueName": "D:\\TripAI\\SmartTravelPlaners.DAL\\SmartTravelPlaners.DAL.csproj",
         "projectName": "SmartTravelPlaners.DAL",
-        "projectPath": "C:\\Users\\moham\\.gemini\\antigravity-ide\\scratch\\smart-travel-planner\\backend\\SmartTravelPlaners.DAL\\SmartTravelPlaners.DAL.csproj",
-        "packagesPath": "C:\\Users\\moham\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\moham\\.gemini\\antigravity-ide\\scratch\\smart-travel-planner\\backend\\SmartTravelPlaners.DAL\\obj\\",
+        "projectPath": "D:\\TripAI\\SmartTravelPlaners.DAL\\SmartTravelPlaners.DAL.csproj",
+        "packagesPath": "C:\\Users\\HESHAM\\.nuget\\packages\\",
+        "outputPath": "D:\\TripAI\\SmartTravelPlaners.DAL\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
         ],
         "configFilePaths": [
-          "C:\\Users\\moham\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Users\\HESHAM\\AppData\\Roaming\\NuGet\\NuGet.Config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
         ],
@@ -26,6 +26,7 @@
         ],
         "sources": {
           "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+          "C:\\Program Files\\dotnet\\library-packs": {},
           "https://api.nuget.org/v3/index.json": {}
         },
         "frameworks": {
@@ -52,6 +53,10 @@
           "framework": "net10.0",
           "targetAlias": "net10.0",
           "dependencies": {
+            "Microsoft.AspNetCore.Identity.EntityFrameworkCore": {
+              "target": "Package",
+              "version": "[10.0.8, )"
+            },
             "Microsoft.EntityFrameworkCore.SqlServer": {
               "target": "Package",
               "version": "[10.0.8, )"
