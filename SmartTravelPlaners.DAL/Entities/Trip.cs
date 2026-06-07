@@ -22,10 +22,10 @@ namespace SmartTravelPlaners.DAL.Entities
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         // Navigation
-        public ICollection<TripDay> Days { get; set; } = [];
-        public ICollection<Hotel> Hotels { get; set; } = [];
-        public ICollection<Flight> Flights { get; set; } = [];
-        public ICollection<TripPreference> Preferences { get; set; } = [];
+        public ICollection<TripDay> Days { get; set; } = new HashSet<TripDay>();
+        public ICollection<Hotel> Hotels { get; set; } = new HashSet<Hotel>();
+        public ICollection<Flight> Flights { get; set; } = new HashSet<Flight>();
+        public ICollection<TripPreference> Preferences { get; set; } = new HashSet<TripPreference>();
         public ChatSession? ChatSession { get; set; }
     }
 }

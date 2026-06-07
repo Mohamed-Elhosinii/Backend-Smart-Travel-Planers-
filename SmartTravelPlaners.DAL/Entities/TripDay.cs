@@ -14,6 +14,6 @@ namespace SmartTravelPlaners.DAL.Entities
         public decimal BudgetSpent { get; set; }
 
         // Navigation
-        public ICollection<Activity> Activities { get; set; } = [];
+        public ICollection<Activity> Activities { get; set; } = new HashSet<Activity>();
     }
 }
