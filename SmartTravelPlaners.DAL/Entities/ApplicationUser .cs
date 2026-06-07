@@ -6,6 +6,6 @@ namespace SmartTravelPlaners.DAL.Entities
     public class ApplicationUser : IdentityUser
     {
         public UserProfile? Profile { get; set; }
-        public ICollection<ChatSession> ChatSessions { get; set; } = [];
+        public ICollection<ChatSession> ChatSessions { get; set; } = new HashSet<ChatSession>();
     }
 }

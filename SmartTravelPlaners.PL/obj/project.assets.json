@@ -3862,23 +3862,23 @@
     ]
   },
   "packageFolders": {
-    "C:\\Users\\HESHAM\\.nuget\\packages\\": {},
+    "C:\\Users\\moham\\.nuget\\packages\\": {},
     "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "D:\\TripAI\\SmartTravelPlaners.PL\\SmartTravelPlaners.PL.csproj",
+      "projectUniqueName": "D:\\ITI\\Graduation Project\\Backend\\SmartTravelPlaners.PL\\SmartTravelPlaners.PL.csproj",
       "projectName": "SmartTravelPlaners.PL",
-      "projectPath": "D:\\TripAI\\SmartTravelPlaners.PL\\SmartTravelPlaners.PL.csproj",
-      "packagesPath": "C:\\Users\\HESHAM\\.nuget\\packages\\",
-      "outputPath": "D:\\TripAI\\SmartTravelPlaners.PL\\obj\\",
+      "projectPath": "D:\\ITI\\Graduation Project\\Backend\\SmartTravelPlaners.PL\\SmartTravelPlaners.PL.csproj",
+      "packagesPath": "C:\\Users\\moham\\.nuget\\packages\\",
+      "outputPath": "D:\\ITI\\Graduation Project\\Backend\\SmartTravelPlaners.PL\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
       ],
       "configFilePaths": [
-        "C:\\Users\\HESHAM\\AppData\\Roaming\\NuGet\\NuGet.Config",
+        "C:\\Users\\moham\\AppData\\Roaming\\NuGet\\NuGet.Config",
         "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
         "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
       ],
@@ -3887,7 +3887,6 @@
       ],
       "sources": {
         "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
-        "C:\\Program Files\\dotnet\\library-packs": {},
         "https://api.nuget.org/v3/index.json": {}
       },
       "frameworks": {
@@ -3895,8 +3894,8 @@
           "framework": "net10.0",
           "targetAlias": "net10.0",
           "projectReferences": {
-            "D:\\TripAI\\SmartTravelPlaners.BLL\\SmartTravelPlaners.BLL.csproj": {
-              "projectPath": "D:\\TripAI\\SmartTravelPlaners.BLL\\SmartTravelPlaners.BLL.csproj"
+            "D:\\ITI\\Graduation Project\\Backend\\SmartTravelPlaners.BLL\\SmartTravelPlaners.BLL.csproj": {
+              "projectPath": "D:\\ITI\\Graduation Project\\Backend\\SmartTravelPlaners.BLL\\SmartTravelPlaners.BLL.csproj"
             }
           }
         }

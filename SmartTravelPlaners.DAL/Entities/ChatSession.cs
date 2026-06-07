@@ -17,6 +17,6 @@ namespace SmartTravelPlaners.DAL.Entities
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
         // Navigation
-        public ICollection<ChatMessage> Messages { get; set; } = [];
+        public ICollection<ChatMessage> Messages { get; set; } = new HashSet<ChatMessage>();
     }
 }
