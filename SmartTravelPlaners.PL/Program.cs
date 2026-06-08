@@ -8,6 +8,8 @@ using SmartTravelPlaners.BLL.Services.Abstract;
 using SmartTravelPlaners.BLL.Services.Concrete;
 using SmartTravelPlaners.DAL.Context;
 using SmartTravelPlaners.DAL.Entities;
+using SmartTravelPlaners.DAL.Repositories.Abstract;
+using SmartTravelPlaners.DAL.Repositories.Concrete;
 using System.Text;
 
 namespace SmartTravelPlaners.PL
@@ -112,9 +114,11 @@ namespace SmartTravelPlaners.PL
                 builder.Configuration.GetSection("EmailSettings"));
             builder.Services.AddScoped<IEmailService, EmailService>();
             builder.Services.AddScoped<IAuthService, AuthService>();
-
-            // TODO: Register Unit of Work & Repositories
-            // builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
+            // Register Unit of Work & Repositories
+            builder.Services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
+            builder.Services.AddScoped<ITripRepository, TripRepository>();
+            builder.Services.AddScoped<IUserProfileRepository, UserProfileRepository>();
+            builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
             // TODO: Register Semantic Kernel & OpenAI Agents
 

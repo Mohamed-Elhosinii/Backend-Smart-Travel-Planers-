@@ -1,0 +1,11 @@
+using System;
+using System.Threading.Tasks;
+using SmartTravelPlaners.DAL.Entities;
+
+namespace SmartTravelPlaners.DAL.Repositories.Abstract
+{
+    public interface ITripRepository : IGenericRepository<Trip>
+    {
+        Task<Trip?> GetTripWithDetailsAsync(Guid tripId);
+    }
+}

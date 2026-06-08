@@ -11,11 +11,6 @@ namespace SmartTravelPlaners.DAL.Context
     {
         public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options) { }
 
-        protected override void OnModelCreating(ModelBuilder modelBuilder)
-        {
-            modelBuilder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);
-        }
-
         public DbSet<UserProfile> UserProfiles { get; set; }
         public DbSet<Trip> Trips { get; set; }
         public DbSet<TripDay> TripDays { get; set; }
