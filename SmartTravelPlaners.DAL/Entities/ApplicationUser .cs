@@ -7,8 +7,6 @@ namespace SmartTravelPlaners.DAL.Entities
     {
         public string FullName { get; set; } = null!;
         public UserProfile? Profile { get; set; }
-        public ICollection<ChatSession> ChatSessions { get; set; } = [];
-
-        public ICollection<RefreshToken> RefreshTokens { get; set; } = [];
+        public ICollection<ChatSession> ChatSessions { get; set; } = new HashSet<ChatSession>();
     }
 }

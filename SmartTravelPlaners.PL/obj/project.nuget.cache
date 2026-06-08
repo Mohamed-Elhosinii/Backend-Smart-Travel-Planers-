@@ -2,7 +2,7 @@
   "version": 2,
   "dgSpecHash": "PQFzusCW54U=",
   "success": true,
-  "projectFilePath": "D:\\TripAI\\SmartTravelPlaners.PL\\SmartTravelPlaners.PL.csproj",
+  "projectFilePath": "D:\\ITI\\Graduation Project\\Backend\\SmartTravelPlaners.PL\\SmartTravelPlaners.PL.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\HESHAM\\.nuget\\packages\\azure.ai.openai\\2.9.0-beta.1\\azure.ai.openai.2.9.0-beta.1.nupkg.sha512",
     "C:\\Users\\HESHAM\\.nuget\\packages\\azure.core\\1.51.1\\azure.core.1.51.1.nupkg.sha512",

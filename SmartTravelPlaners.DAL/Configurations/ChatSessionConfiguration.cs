@@ -32,8 +32,6 @@ namespace SmartTravelPlaners.DAL.Configurations
                 .WithMany(u => u.ChatSessions)
                 .HasForeignKey(cs => cs.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
-
-
         }
     }
 }

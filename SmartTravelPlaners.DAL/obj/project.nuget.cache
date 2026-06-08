@@ -2,7 +2,7 @@
   "version": 2,
   "dgSpecHash": "5fUvN/D2I28=",
   "success": true,
-  "projectFilePath": "D:\\TripAI\\SmartTravelPlaners.DAL\\SmartTravelPlaners.DAL.csproj",
+  "projectFilePath": "D:\\ITI\\Graduation Project\\Backend\\SmartTravelPlaners.DAL\\SmartTravelPlaners.DAL.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\HESHAM\\.nuget\\packages\\azure.core\\1.47.1\\azure.core.1.47.1.nupkg.sha512",
     "C:\\Users\\HESHAM\\.nuget\\packages\\azure.identity\\1.14.2\\azure.identity.1.14.2.nupkg.sha512",

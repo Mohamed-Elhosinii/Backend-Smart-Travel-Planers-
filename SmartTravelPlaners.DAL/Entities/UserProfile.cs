@@ -13,6 +13,6 @@ namespace SmartTravelPlaners.DAL.Entities
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         // Navigation
-        public ICollection<Trip> Trips { get; set; } = [];
+        public ICollection<Trip> Trips { get; set; } = new HashSet<Trip>();
     }
 }
