@@ -22,11 +22,10 @@ namespace SmartTravelPlaners.DAL.Configurations
             builder.Property(cs => cs.UpdatedAt)
                 .IsRequired();
 
-            // 1-to-1 Relationship with Trip
-            builder.HasOne(cs => cs.Trip)
-                .WithOne(t => t.ChatSession)
-                .HasForeignKey<ChatSession>(cs => cs.TripId)
-                .OnDelete(DeleteBehavior.Cascade);
+           builder.HasOne(cs => cs.Trip)
+          .WithOne(t => t.ChatSession)
+          .HasForeignKey<ChatSession>(cs => cs.TripId)
+          .OnDelete(DeleteBehavior.NoAction); 
 
             // Relationship with ApplicationUser
             builder.HasOne(cs => cs.User)

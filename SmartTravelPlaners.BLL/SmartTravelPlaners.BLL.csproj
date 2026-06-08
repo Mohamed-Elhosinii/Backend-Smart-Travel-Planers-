@@ -5,10 +5,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="DTOs\" />
     <Folder Include="Mappers\" />
-    <Folder Include="Services\Abstract\" />
-    <Folder Include="Services\Concrete\" />
   </ItemGroup>
 
   <ItemGroup>
