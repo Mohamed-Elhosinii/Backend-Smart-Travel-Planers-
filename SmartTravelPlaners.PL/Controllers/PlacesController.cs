@@ -1,25 +1,24 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using SmartTravelPlaners.BLL.ExternalApis.Interfaces;
+using SmartTravelPlaners.BLL.ExternalApis.Interfaces.Foursquare;
 
 namespace SmartTravelPlaners.PL.Controllers
 {
     [ApiController]
     [Route("api/test")]
-    public class TestApisController : ControllerBase
+    public class PlacesController : ControllerBase
     {
         private readonly IPlacesApiService _placesService;
 
-        public TestApisController(IPlacesApiService placesService)
+        public PlacesController(IPlacesApiService placesService)
         {
             _placesService = placesService;
         }
-
-        // GET /api/test/places?city=Istanbul&query=restaurants
+        
         [HttpGet("places")]
-        public async Task<IActionResult> GetPlaces([FromQuery] string city = "Istanbul",[FromQuery] string? query = null)
+        public async Task<IActionResult> GetPlaces([FromQuery] double? lat ,[FromQuery] double? lon,[FromQuery] string city = "cairo",[FromQuery] string? query = null)
         {
-            var places = await _placesService.SearchAsync(city, query);
+            var places = await _placesService.SearchAsync(lat, lon, city, query);
             return Ok(places);
         }
 
@@ -36,22 +35,22 @@ namespace SmartTravelPlaners.PL.Controllers
         }
 
    
-        [HttpGet("{fsqPlaceId}/photos")]
-        public async Task<IActionResult> GetPhotos( string fsqPlaceId)
-        {
-            var result = await _placesService.GetPlacePhotosAsync(fsqPlaceId);
+        //[HttpGet("{fsqPlaceId}/photos")]
+        //public async Task<IActionResult> GetPhotos( string fsqPlaceId)
+        //{
+        //    var result = await _placesService.GetPlacePhotosAsync(fsqPlaceId);
 
-            return Ok(result);
-        }
+        //    return Ok(result);
+        //}
 
     
-        [HttpGet("{fsqPlaceId}/tips")]
-        public async Task<IActionResult> GetTips( string fsqPlaceId)
-        {
-            var result = await _placesService.GetPlaceTipsAsync(fsqPlaceId);
+        //[HttpGet("{fsqPlaceId}/tips")]
+        //public async Task<IActionResult> GetTips( string fsqPlaceId)
+        //{
+        //    var result = await _placesService.GetPlaceTipsAsync(fsqPlaceId);
 
-            return Ok(result);
-        }
+        //    return Ok(result);
+        //}
 
       
         [HttpGet("nearby")]

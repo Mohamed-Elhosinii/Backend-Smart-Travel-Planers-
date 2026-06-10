@@ -1,12 +1,15 @@
 ﻿// BLL/ExternalApis/Services/PlacesApiService.cs
 using Microsoft.Extensions.Options;
-using SmartTravelPlaners.BLL.ExternalApis.DTOs;
-using SmartTravelPlaners.BLL.ExternalApis.Interfaces;
-using SmartTravelPlaners.BLL.ExternalApis.Settings;
+using SmartTravelPlaners.BLL.ExternalApis.DTOs.Foursquare;
+using SmartTravelPlaners.BLL.ExternalApis.Interfaces.Foursquare;
+using SmartTravelPlaners.BLL.ExternalApis.Models.Foursquare;
+using SmartTravelPlaners.BLL.ExternalApis.Settings.Foursquare;
+using SmartTravelPlaners.BLL.Mappers.Foursquare;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 
-namespace SmartTravelPlaners.BLL.ExternalApis.Services
+namespace SmartTravelPlaners.BLL.ExternalApis.Services.Foursquare
 {
     public class PlacesApiService : IPlacesApiService
     {
@@ -19,15 +22,26 @@ namespace SmartTravelPlaners.BLL.ExternalApis.Services
             _http = http;
             _http.BaseAddress = new Uri(_settings.PlacesBaseUrl);
         }
+        
 
-        public async Task<List<PlaceDto>> SearchAsync(string city, string? query = null, int limit = 10)
+        public async Task<List<PlaceDto>> SearchAsync(double ?lat, double? lon, string city, string? query = null, int limit = 20)
         {
-            var url = $"/places/search?near={Uri.EscapeDataString(city)}&limit={limit}";
+            var url = "/places/search";
+            if (lat.HasValue && lon.HasValue)
+            {
+                url += $"?ll={lat.Value},{lon.Value}";
+            }
+            else
+            {
+                url += $"?near={Uri.EscapeDataString(city)}";
+            }
+
+            url += $"&limit={limit}";
 
             if (!string.IsNullOrEmpty(query))
                 url += $"&query={Uri.EscapeDataString(query)}";
 
-            // بدل GetFromJsonAsync، بنعمل Request يدوي عشان نتحكم في الـ Headers
+          
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
 
             request.Headers.Authorization =
@@ -40,21 +54,12 @@ namespace SmartTravelPlaners.BLL.ExternalApis.Services
 
             var result = await response.Content.ReadFromJsonAsync<FoursquareSearchResponse>();
 
-            if (result is null) return new();
+            if (result is null || result.results is null)
+                return new List<PlaceDto>();
 
-            return result.Results.Select(p => new PlaceDto
-            {
-                FsqPlaceId = p.Fsq_Place_Id,
-                Name = p.Name,
-                Category = p.Categories.FirstOrDefault()?.Name ?? "General",
-                Address = p.Location?.Formatted_Address ?? "",
-                Latitude = p.Latitude,
-                Longitude = p.Longitude,
-                Rating = p.Rating,
-                Popularity = p.Popularity,
-                Price = p.Price,
-                Website = p.Website
-            }).ToList();
+            return result.results
+                .Select(p => p.ToDto())
+                .ToList();
         }
 
         //palces details
@@ -80,22 +85,12 @@ namespace SmartTravelPlaners.BLL.ExternalApis.Services
             var result =
                 await response.Content.ReadFromJsonAsync<FoursquarePlaceDetailsResponse>();
 
-            if (result == null)
-                return null;
+           
 
-            return new PlaceDetailsDto
-            {
-                FsqPlaceId = result.Fsq_Place_Id,
-                Name = result.Name,
-                Address = result.Location?.Formatted_Address ?? "",
-                Website = result.Website,
-                Description = result.Description,
-                Rating = result.Rating,
-                Price = result.Price,
-                Features = result.Attributes?
-                    .Keys
-                    .ToList() ?? new()
-            };
+            if (result == null)
+                return new PlaceDetailsDto();
+
+            return result.ToDetailsDto();
         }
 
         // places photes 
@@ -187,15 +182,11 @@ namespace SmartTravelPlaners.BLL.ExternalApis.Services
                 await response.Content.ReadFromJsonAsync<GeotaggingResponse>();
 
             if (result == null)
-                return new();
+                return new List<NearbyPlaceDto>();
 
-            return result.Results.Select(x => new NearbyPlaceDto
-            {
-                FsqPlaceId = x.Fsq_Place_Id,
-                Name = x.Name,
-                Latitude = x.Latitude,
-                Longitude = x.Longitude
-            }).ToList();
+            return result.Candidates
+                .Select(x => x.ToNearbyDto())
+                .ToList();
         }
     }
 }
