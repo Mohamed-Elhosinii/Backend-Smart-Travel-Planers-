@@ -6,6 +6,9 @@ using SmartTravelPlaners.BLL.DTOs.Auth;
 using SmartTravelPlaners.BLL.ExternalApis.Interfaces;
 using SmartTravelPlaners.BLL.ExternalApis.Services;
 using SmartTravelPlaners.BLL.ExternalApis.Settings;
+using SmartTravelPlaners.BLL.ExternalApis.HotelsAPI.Interfaces;
+using SmartTravelPlaners.BLL.ExternalApis.HotelsAPI.Services;
+using SmartTravelPlaners.BLL.ExternalApis.HotelsAPI.Settings;
 using SmartTravelPlaners.BLL.Services;
 using SmartTravelPlaners.BLL.Services.Abstract;
 using SmartTravelPlaners.BLL.Services.Concrete;
@@ -127,11 +130,12 @@ namespace SmartTravelPlaners.PL
 
 
             //External APis
-            builder.Services.Configure<FoursquareSettings>(
-              builder.Configuration.GetSection("FoursquareSettings")
-                    );
-
+            //Places API
+            builder.Services.Configure<FoursquareSettings>(builder.Configuration.GetSection("FoursquareSettings"));
             builder.Services.AddHttpClient<IPlacesApiService, PlacesApiService>();
+            //Hotel API
+            builder.Services.Configure<HotelApiSettings>(builder.Configuration.GetSection("HotelApiSettings"));
+            builder.Services.AddHttpClient<IHotelApiService, HotelApiService>();
             // =======================================================
             // 6. BUILD APP
             // =======================================================
