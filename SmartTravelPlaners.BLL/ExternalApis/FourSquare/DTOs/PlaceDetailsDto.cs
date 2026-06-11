@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace SmartTravelPlaners.BLL.ExternalApis.DTOs.Foursquare
+namespace SmartTravelPlaners.BLL.ExternalApis.Foursquare.DTOs
 {
     public class PlaceDetailsDto
     {

@@ -3,13 +3,11 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using SmartTravelPlaners.BLL.DTOs.Auth;
-using SmartTravelPlaners.BLL.ExternalApis.Interfaces;
-using SmartTravelPlaners.BLL.ExternalApis.Services;
-using SmartTravelPlaners.BLL.ExternalApis.Settings;
-using SmartTravelPlaners.BLL.ExternalApis.HotelsAPI.Interfaces;
+using SmartTravelPlaners.BLL.ExternalApis.Foursquare.Settings;
 using SmartTravelPlaners.BLL.ExternalApis.HotelsAPI.Services;
 using SmartTravelPlaners.BLL.ExternalApis.HotelsAPI.Settings;
-using SmartTravelPlaners.BLL.Services;
+using SmartTravelPlaners.BLL.ExternalApis.Foursquare.Services;
+
 using SmartTravelPlaners.BLL.Services.Abstract;
 using SmartTravelPlaners.BLL.Services.Concrete;
 using SmartTravelPlaners.DAL.Context;
@@ -17,6 +15,8 @@ using SmartTravelPlaners.DAL.Entities;
 using SmartTravelPlaners.DAL.Repositories.Abstract;
 using SmartTravelPlaners.DAL.Repositories.Concrete;
 using System.Text;
+using SmartTravelPlaners.BLL.ExternalApis.HotelsAPI.Interfaces;
+using SmartTravelPlaners.BLL.ExternalApis.FourSquare.Interfaces;
 
 namespace SmartTravelPlaners.PL
 {

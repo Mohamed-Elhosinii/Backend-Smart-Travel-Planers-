@@ -1,10 +1,10 @@
-﻿using SmartTravelPlaners.BLL.ExternalApis.DTOs.Foursquare;
+﻿using SmartTravelPlaners.BLL.ExternalApis.Foursquare.DTOs;
 using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Text.Json.Serialization;
 
-namespace SmartTravelPlaners.BLL.ExternalApis.Models.Foursquare
+namespace SmartTravelPlaners.BLL.ExternalApis.FourSquare.Models
 {
     public class GeotaggingCandidate
     {

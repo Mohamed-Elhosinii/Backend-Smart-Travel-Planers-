@@ -1,11 +1,11 @@
-﻿using SmartTravelPlaners.BLL.ExternalApis.DTOs.Foursquare;
-using SmartTravelPlaners.BLL.ExternalApis.Models.Foursquare;
+﻿using SmartTravelPlaners.BLL.ExternalApis.Foursquare.DTOs;
+using SmartTravelPlaners.BLL.ExternalApis.FourSquare.Models;
 using System;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Text;
 
-namespace SmartTravelPlaners.BLL.Mappers.Foursquare
+namespace SmartTravelPlaners.BLL.ExternalApis.FourSquare.Mappers
 {
     public static class PlaceMapper
     {

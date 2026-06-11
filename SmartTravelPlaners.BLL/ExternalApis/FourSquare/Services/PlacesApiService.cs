@@ -1,11 +1,12 @@
 ﻿using Microsoft.Extensions.Options;
-using SmartTravelPlaners.BLL.ExternalApis.DTOs;
-using SmartTravelPlaners.BLL.ExternalApis.Interfaces;
-using SmartTravelPlaners.BLL.ExternalApis.Settings;
+using SmartTravelPlaners.BLL.ExternalApis.Foursquare.DTOs;
+using SmartTravelPlaners.BLL.ExternalApis.FourSquare.Interfaces;
+using SmartTravelPlaners.BLL.ExternalApis.Foursquare.Settings;
 using System.Net.Http.Headers;
+using SmartTravelPlaners.BLL.ExternalApis.FourSquare.Models;
 using System.Net.Http.Json;
 
-namespace SmartTravelPlaners.BLL.ExternalApis.Services
+namespace SmartTravelPlaners.BLL.ExternalApis.Foursquare.Services
 {
     public class PlacesApiService : IPlacesApiService
     {
@@ -40,18 +41,15 @@ namespace SmartTravelPlaners.BLL.ExternalApis.Services
 
             if (result is null) return new();
 
-            return result.Results.Select(p => new PlaceDto
+            return result.results.Select(p => new PlaceDto
             {
                 FsqPlaceId = p.Fsq_Place_Id,
                 Name = p.Name,
                 Category = p.Categories.FirstOrDefault()?.Name ?? "General",
                 Address = p.Location?.Formatted_Address ?? "",
                 Latitude = p.Latitude,
-                Longitude = p.Longitude,
-                Rating = p.Rating,
-                Popularity = p.Popularity,
-                Price = p.Price,
-                Website = p.Website
+                Longitude = p.Longitude
+              
             }).ToList();
         }
 
@@ -85,14 +83,8 @@ namespace SmartTravelPlaners.BLL.ExternalApis.Services
             {
                 FsqPlaceId = result.Fsq_Place_Id,
                 Name = result.Name,
-                Address = result.Location?.Formatted_Address ?? "",
-                Website = result.Website,
-                Description = result.Description,
-                Rating = result.Rating,
-                Price = result.Price,
-                Features = result.Attributes?
-                    .Keys
-                    .ToList() ?? new()
+                Address = result.Location?.Formatted_Address ?? ""
+
             };
         }
 
@@ -187,7 +179,7 @@ namespace SmartTravelPlaners.BLL.ExternalApis.Services
             if (result == null)
                 return new();
 
-            return result.Results.Select(x => new NearbyPlaceDto
+            return result.Candidates.Select(x => new NearbyPlaceDto
             {
                 FsqPlaceId = x.Fsq_Place_Id,
                 Name = x.Name,

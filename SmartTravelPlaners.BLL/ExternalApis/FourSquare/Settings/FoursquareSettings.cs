@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace SmartTravelPlaners.BLL.ExternalApis.Settings.Foursquare
+namespace SmartTravelPlaners.BLL.ExternalApis.Foursquare.Settings
 {
     public class FoursquareSettings
     {

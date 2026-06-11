@@ -1,14 +1,14 @@
-﻿using SmartTravelPlaners.BLL.ExternalApis.DTOs.Foursquare;
+﻿using SmartTravelPlaners.BLL.ExternalApis.Foursquare.DTOs;
 using System;
 using System.Collections.Generic;
 using System.Text;
 
-namespace SmartTravelPlaners.BLL.ExternalApis.Interfaces.Foursquare
+namespace SmartTravelPlaners.BLL.ExternalApis.FourSquare.Interfaces
 {
     public interface IPlacesApiService
     {
        
-        Task<List<PlaceDto>> SearchAsync(double? lat, double? lon, string city, string? query = null, int limit = 20);
+        Task<List<PlaceDto>> SearchAsync( string city, string? query = null, int limit = 20);
 
         Task<PlaceDetailsDto?> GetPlaceDetailsAsync(string fsqPlaceId);
 

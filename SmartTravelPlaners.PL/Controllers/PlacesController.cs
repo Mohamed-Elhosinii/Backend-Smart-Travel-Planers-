@@ -1,6 +1,6 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using SmartTravelPlaners.BLL.ExternalApis.Interfaces.Foursquare;
+using SmartTravelPlaners.BLL.ExternalApis.FourSquare.Interfaces;
 
 namespace SmartTravelPlaners.PL.Controllers
 {
@@ -18,7 +18,7 @@ namespace SmartTravelPlaners.PL.Controllers
         [HttpGet("places")]
         public async Task<IActionResult> GetPlaces([FromQuery] double? lat ,[FromQuery] double? lon,[FromQuery] string city = "cairo",[FromQuery] string? query = null)
         {
-            var places = await _placesService.SearchAsync(lat, lon, city, query);
+            var places = await _placesService.SearchAsync(city, query);
             return Ok(places);
         }
 

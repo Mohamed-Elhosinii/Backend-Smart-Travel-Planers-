@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using System.Text.Json.Serialization;
 
-namespace SmartTravelPlaners.BLL.ExternalApis.Models.Foursquare
+namespace SmartTravelPlaners.BLL.ExternalApis.FourSquare.Models
 {
     public class FoursquareSearchResponse
     {

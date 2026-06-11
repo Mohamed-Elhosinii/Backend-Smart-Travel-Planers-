@@ -15,6 +15,13 @@
     </PackageReference>
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Agents\Chat\" />
+    <Folder Include="Agents\Services\" />
+    <Folder Include="Agents\Plugins\" />
+    <Folder Include="Agents\Orchestrator\" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
