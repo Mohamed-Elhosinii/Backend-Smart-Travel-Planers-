@@ -3,6 +3,9 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using SmartTravelPlaners.BLL.DTOs.Auth;
+using SmartTravelPlaners.BLL.ExternalApis.Interfaces;
+using SmartTravelPlaners.BLL.ExternalApis.Services;
+using SmartTravelPlaners.BLL.ExternalApis.Settings;
 using SmartTravelPlaners.BLL.Services;
 using SmartTravelPlaners.BLL.Services.Abstract;
 using SmartTravelPlaners.BLL.Services.Concrete;
@@ -122,6 +125,13 @@ namespace SmartTravelPlaners.PL
 
             // TODO: Register Semantic Kernel & OpenAI Agents
 
+
+            //External APis
+            builder.Services.Configure<FoursquareSettings>(
+              builder.Configuration.GetSection("FoursquareSettings")
+                    );
+
+            builder.Services.AddHttpClient<IPlacesApiService, PlacesApiService>();
             // =======================================================
             // 6. BUILD APP
             // =======================================================
