@@ -6,6 +6,7 @@ using SmartTravelPlaners.BLL.DTOs.Auth;
 using SmartTravelPlaners.BLL.ExternalApis.Interfaces.Foursquare;
 using SmartTravelPlaners.BLL.ExternalApis.Services.Foursquare;
 using SmartTravelPlaners.BLL.ExternalApis.Settings.Foursquare;
+using SmartTravelPlaners.BLL.ExternalApis.Settings.Places;
 using SmartTravelPlaners.BLL.Services;
 using SmartTravelPlaners.BLL.Services.Abstract;
 using SmartTravelPlaners.BLL.Services.Concrete;
@@ -127,11 +128,25 @@ namespace SmartTravelPlaners.PL
 
 
             //External APis
+            //Places Api
             builder.Services.Configure<FoursquareSettings>(
               builder.Configuration.GetSection("FoursquareSettings")
                     );
+            builder.Services.Configure<SerperSettings>(
+              builder.Configuration.GetSection("SerperSettings")
+                    );
 
-            builder.Services.AddHttpClient<IPlacesApiService, PlacesApiService>();
+            
+            builder.Services.AddHttpClient("Foursquare", client =>
+            {
+                client.BaseAddress = new Uri("https://places-api.foursquare.com");
+            });
+            builder.Services.AddHttpClient("Serper", client =>
+            {
+                client.BaseAddress = new Uri("https://google.serper.dev");
+            });
+
+            builder.Services.AddScoped<IPlacesApiService, PlacesApiService>();
             // =======================================================
             // 6. BUILD APP
             // =======================================================

@@ -46,6 +46,16 @@ namespace SmartTravelPlaners.BLL.Mappers.Foursquare
                 Phone = p.tel
             };
         }
+        public static PlacePhotoDto ToPhotoDto(this SerperResponse s)
+        {
+            return new PlacePhotoDto
+            {
+                Urls = s.Images?
+                    .Select(x => x.ImageUrl)
+                    .Where(x => !string.IsNullOrEmpty(x))
+                    .ToList() ?? new List<string>()
+            };
+        }
     }
 }
 
