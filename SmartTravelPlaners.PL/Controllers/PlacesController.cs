@@ -17,7 +17,7 @@ namespace SmartTravelPlaners.PL.Controllers
       
 
         [HttpGet("places")]
-        public async Task<IActionResult> GetPlaces([FromQuery] double? lon,[FromQuery] string city = "cairo",[FromQuery] string? query = null)
+        public async Task<IActionResult> GetPlaces([FromQuery] string city = "cairo",[FromQuery] string? query = null)
         {
             var places = await _placesService.SearchAsync( city, query);
             return Ok(places);
