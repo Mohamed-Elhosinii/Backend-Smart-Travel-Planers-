@@ -1,5 +1,6 @@
 ﻿using SmartTravelPlaners.BLL.ExternalApis.Foursquare.DTOs;
 using SmartTravelPlaners.BLL.ExternalApis.FourSquare.Models;
+using SmartTravelPlaners.BLL.ExternalApis.Models.Foursquare;
 using System;
 using System.Collections.Generic;
 using System.Numerics;
@@ -44,6 +45,16 @@ namespace SmartTravelPlaners.BLL.ExternalApis.FourSquare.Mappers
                 Latitude = p.Latitude,
                 Longitude = p.Longitude,
                 Phone = p.tel
+            };
+        }
+        public static PlacePhotoDto ToPhotoDto(this SerperResponse s)
+        {
+            return new PlacePhotoDto
+            {
+                Urls = s.Images?
+                    .Select(x => x.ImageUrl)
+                    .Where(x => !string.IsNullOrEmpty(x))
+                    .ToList() ?? new List<string>()
             };
         }
     }

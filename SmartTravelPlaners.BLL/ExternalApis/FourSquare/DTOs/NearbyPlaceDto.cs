@@ -13,6 +13,7 @@ namespace SmartTravelPlaners.BLL.ExternalApis.Foursquare.DTOs
         public double Longitude { get; set; }
         public string? Address { get; set; }
         public string? Category { get; set; }
+        public List<PlacePhotoDto> Images { get; set; }
     }
    
 }

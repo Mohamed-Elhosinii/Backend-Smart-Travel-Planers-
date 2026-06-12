@@ -14,12 +14,19 @@ namespace SmartTravelPlaners.PL.Controllers
         {
             _placesService = placesService;
         }
-        
+      
+
         [HttpGet("places")]
-        public async Task<IActionResult> GetPlaces([FromQuery] double? lat ,[FromQuery] double? lon,[FromQuery] string city = "cairo",[FromQuery] string? query = null)
+        public async Task<IActionResult> GetPlaces([FromQuery] double? lon,[FromQuery] string city = "cairo",[FromQuery] string? query = null)
         {
-            var places = await _placesService.SearchAsync(city, query);
+            var places = await _placesService.SearchAsync( city, query);
             return Ok(places);
+        }
+        [HttpGet("photos")]
+        public async Task<IActionResult> GetPlacePhotos([FromQuery] string placeName, [FromQuery] string category, [FromQuery] string address)
+        {
+            var result = await _placesService.GetImages(placeName, category, address);
+            return Ok(result);
         }
 
 
@@ -34,25 +41,8 @@ namespace SmartTravelPlaners.PL.Controllers
             return Ok(result);
         }
 
+
    
-        //[HttpGet("{fsqPlaceId}/photos")]
-        //public async Task<IActionResult> GetPhotos( string fsqPlaceId)
-        //{
-        //    var result = await _placesService.GetPlacePhotosAsync(fsqPlaceId);
-
-        //    return Ok(result);
-        //}
-
-    
-        //[HttpGet("{fsqPlaceId}/tips")]
-        //public async Task<IActionResult> GetTips( string fsqPlaceId)
-        //{
-        //    var result = await _placesService.GetPlaceTipsAsync(fsqPlaceId);
-
-        //    return Ok(result);
-        //}
-
-      
         [HttpGet("nearby")]
         public async Task<IActionResult> GetNearby([FromQuery] double lat, [FromQuery] double lng)
         {

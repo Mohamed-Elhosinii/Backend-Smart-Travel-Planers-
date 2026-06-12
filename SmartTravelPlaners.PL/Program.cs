@@ -3,10 +3,9 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using SmartTravelPlaners.BLL.DTOs.Auth;
-using SmartTravelPlaners.BLL.ExternalApis.Foursquare.Settings;
-using SmartTravelPlaners.BLL.ExternalApis.HotelsAPI.Services;
-using SmartTravelPlaners.BLL.ExternalApis.HotelsAPI.Settings;
-using SmartTravelPlaners.BLL.ExternalApis.Foursquare.Services;
+using SmartTravelPlaners.BLL.ExternalApis.FourSquare.Services;
+using SmartTravelPlaners.BLL.ExternalApis.FourSquare.Interfaces;
+using SmartTravelPlaners.BLL.ExternalApis.Settings.Places;
 
 using SmartTravelPlaners.BLL.Services.Abstract;
 using SmartTravelPlaners.BLL.Services.Concrete;
@@ -15,8 +14,9 @@ using SmartTravelPlaners.DAL.Entities;
 using SmartTravelPlaners.DAL.Repositories.Abstract;
 using SmartTravelPlaners.DAL.Repositories.Concrete;
 using System.Text;
+using SmartTravelPlaners.BLL.ExternalApis.HotelsAPI.Settings;
 using SmartTravelPlaners.BLL.ExternalApis.HotelsAPI.Interfaces;
-using SmartTravelPlaners.BLL.ExternalApis.FourSquare.Interfaces;
+using SmartTravelPlaners.BLL.ExternalApis.HotelsAPI.Services;
 
 namespace SmartTravelPlaners.PL
 {
@@ -133,12 +133,30 @@ namespace SmartTravelPlaners.PL
 
 
             //External APis
-            //Places API
-            builder.Services.Configure<FoursquareSettings>(builder.Configuration.GetSection("FoursquareSettings"));
-            builder.Services.AddHttpClient<IPlacesApiService, PlacesApiService>();
+
             //Hotel API
             builder.Services.Configure<HotelApiSettings>(builder.Configuration.GetSection("HotelApiSettings"));
             builder.Services.AddHttpClient<IHotelApiService, HotelApiService>();
+
+            //Places API
+
+            builder.Services.Configure<FoursquareSettings>(
+           builder.Configuration.GetSection("FoursquareSettings"));
+
+            builder.Services.Configure<SerperSettings>(
+                builder.Configuration.GetSection("SerperSettings"));
+
+            builder.Services.AddHttpClient("Foursquare", client =>
+            {
+                client.BaseAddress = new Uri("https://places-api.foursquare.com");
+            });
+
+            builder.Services.AddHttpClient("Serper", client =>
+            {
+                client.BaseAddress = new Uri("https://google.serper.dev");
+            });
+
+            builder.Services.AddScoped<IPlacesApiService, PlacesApiService>();
             // =======================================================
             // 6. BUILD APP
             // =======================================================
