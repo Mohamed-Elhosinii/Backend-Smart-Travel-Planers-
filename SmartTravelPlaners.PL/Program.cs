@@ -26,7 +26,6 @@ namespace SmartTravelPlaners.PL
             builder.Services.AddControllers();
             builder.Services.AddEndpointsApiExplorer();
 
-            // ← ضيف ده
             builder.Services.AddSwaggerGen(c =>
             {
                 c.SwaggerDoc("v1", new Microsoft.OpenApi.OpenApiInfo
@@ -53,8 +52,6 @@ namespace SmartTravelPlaners.PL
                     }
                 });
             });
-
-
 
             // =======================================================
             // 2. DATABASE
@@ -104,8 +101,7 @@ namespace SmartTravelPlaners.PL
             {
                 options.ClientId = builder.Configuration["Authentication:Google:ClientId"]!;
                 options.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"]!;
-            }
-            );
+            });
 
             // =======================================================
             // 5. APPLICATION SERVICES
@@ -114,11 +110,18 @@ namespace SmartTravelPlaners.PL
                 builder.Configuration.GetSection("EmailSettings"));
             builder.Services.AddScoped<IEmailService, EmailService>();
             builder.Services.AddScoped<IAuthService, AuthService>();
-            // Register Unit of Work & Repositories
+
+            // Repositories & Unit of Work
             builder.Services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
             builder.Services.AddScoped<ITripRepository, TripRepository>();
             builder.Services.AddScoped<IUserProfileRepository, UserProfileRepository>();
             builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
+
+            // Flight Service
+            builder.Services.AddHttpClient();
+            builder.Services.AddScoped<
+                SmartTravelPlaners.BLL.ExternalApis.Interfaces.IFlightService,
+                SmartTravelPlaners.BLL.ExternalApis.Services.FlightService>();
 
             // TODO: Register Semantic Kernel & OpenAI Agents
 
@@ -139,7 +142,7 @@ namespace SmartTravelPlaners.PL
 
             app.UseHttpsRedirection();
 
-            app.UseAuthentication(); // ← قبل UseAuthorization
+            app.UseAuthentication();
             app.UseAuthorization();
 
             app.MapControllers();
