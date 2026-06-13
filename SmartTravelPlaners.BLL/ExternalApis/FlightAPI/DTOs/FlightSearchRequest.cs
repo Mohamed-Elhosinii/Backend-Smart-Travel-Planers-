@@ -1,4 +1,4 @@
-﻿namespace SmartTravelPlaners.BLL.ExternalApis.DTOs
+﻿namespace SmartTravelPlaners.BLL.ExternalApis.FlightAPI.DTOs
 {
     public enum TripType
     {
@@ -8,16 +8,16 @@
 
     public class FlightSearchRequest
     {
-        /// <summary>Departure airport IATA code e.g. CAI</summary>
+        //Departure airport IATA code e.g. CAI
         public string DepartureAirport { get; set; } = "";
 
-        /// <summary>Arrival airport IATA code e.g. DXB</summary>
+        //Arrival airport IATA code e.g. DXB
         public string ArrivalAirport { get; set; } = "";
 
-        /// <summary>Departure date in yyyy-MM-dd format</summary>
+        //<summary>Departure date in yyyy-MM-dd format
         public string DepartureDate { get; set; } = "";
 
-        /// <summary>Return date in yyyy-MM-dd format — required only for RoundTrip</summary>
+        //Return date in yyyy-MM-dd format — required only for RoundTrip
         public string? ReturnDate { get; set; }
 
         public TripType TripType { get; set; } = TripType.OneWay;

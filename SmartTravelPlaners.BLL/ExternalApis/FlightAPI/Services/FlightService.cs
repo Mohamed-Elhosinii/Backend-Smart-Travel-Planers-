@@ -1,8 +1,9 @@
 using System.Text.Json;
-using SmartTravelPlaners.BLL.ExternalApis.DTOs;
-using SmartTravelPlaners.BLL.ExternalApis.Interfaces;
+using Microsoft.Extensions.Options;
+using SmartTravelPlaners.BLL.ExternalApis.FlightAPI.DTOs;
+using SmartTravelPlaners.BLL.ExternalApis.FlightAPI.Interfaces;
 
-namespace SmartTravelPlaners.BLL.ExternalApis.Services
+namespace SmartTravelPlaners.BLL.ExternalApis.FlightAPI.Services
 {
     public class FlightService : IFlightService
     {
