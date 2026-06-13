@@ -1,0 +1,65 @@
+using Microsoft.AspNetCore.Mvc;
+using SmartTravelPlaners.BLL.ExternalApis.DTOs;
+using SmartTravelPlaners.BLL.ExternalApis.Interfaces;
+
+namespace SmartTravelPlaners.PL.Controllers
+{
+    [ApiController]
+    [Route("api/flights")]
+    public class FlightController : ControllerBase
+    {
+        private readonly IFlightService _flightService;
+
+        public FlightController(IFlightService flightService)
+        {
+            _flightService = flightService;
+        }
+
+        /// <summary>
+        /// Search for one-way or round-trip flights
+        /// </summary>
+        [HttpGet("search")]
+        public async Task<IActionResult> SearchFlights(
+            [FromQuery] string departure = "CAI",
+            [FromQuery] string arrival = "DXB",
+            [FromQuery] string departureDate = "2026-06-20",
+            [FromQuery] TripType tripType = TripType.OneWay,
+            [FromQuery] string? returnDate = null)
+        {
+            try
+            {
+                if (tripType == TripType.RoundTrip && string.IsNullOrWhiteSpace(returnDate))
+                    return BadRequest(new { error = "returnDate is required for RoundTrip" });
+
+                var request = new FlightSearchRequest
+                {
+                    DepartureAirport = departure.ToUpper(),
+                    ArrivalAirport = arrival.ToUpper(),
+                    DepartureDate = departureDate,
+                    TripType = tripType,
+                    ReturnDate = returnDate
+                };
+
+                var result = await _flightService.SearchFlightsAsync(request);
+
+                return Ok(new
+                {
+                    tripType = tripType.ToString(),
+                    isRoundTrip = result.IsRoundTrip,
+                    outboundCount = result.OutboundFlights.Count,
+                    returnCount = result.ReturnFlights?.Count ?? 0,
+                    outboundFlights = result.OutboundFlights,
+                    returnFlights = result.ReturnFlights
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    error = ex.Message,
+                    innerException = ex.InnerException?.Message
+                });
+            }
+        }
+    }
+}
