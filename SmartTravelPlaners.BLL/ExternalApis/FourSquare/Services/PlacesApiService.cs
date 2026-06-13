@@ -58,17 +58,10 @@ namespace SmartTravelPlaners.BLL.ExternalApis.FourSquare.Services
             if (result == null)
                 return new();
 
-            var places = result.results
+           return result.results
                 .Select(p => p.ToDto())
                 .ToList();
 
-            foreach (var place in places)
-            {
-                var images = await GetImages(place.Name, place.Category, place.Address);
-                place.Images = images ?? new List<PlacePhotoDto>();
-            }
-
-            return places;
         }
 
         // ================= IMAGES =================
@@ -147,11 +140,8 @@ namespace SmartTravelPlaners.BLL.ExternalApis.FourSquare.Services
             if (result == null)
                 return null;
 
-            var place = result.ToDetailsDto();
-            place.Images = await GetImages(place.Name, place.Category, place.Address)
-                           ?? new List<PlacePhotoDto>();
-
-            return place;
+           return result.ToDetailsDto();
+           
         }
 
         // ================= NEARBY =================
@@ -174,17 +164,10 @@ namespace SmartTravelPlaners.BLL.ExternalApis.FourSquare.Services
             if (result == null)
                 return new();
 
-            var nearby = result.Candidates
+            return result.Candidates
                 .Select(x => x.ToNearbyDto())
                 .ToList();
 
-            foreach (var place in nearby)
-            {
-                place.Images = await GetImages(place.Name, place.Category, place.Address)
-                               ?? new List<PlacePhotoDto>();
-            }
-
-            return nearby;
         }
     }
 }

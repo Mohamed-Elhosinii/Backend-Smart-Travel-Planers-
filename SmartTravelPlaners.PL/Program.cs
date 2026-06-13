@@ -1,22 +1,31 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.ChatCompletion;
+using OpenAI;
+using SmartTravelPlaners.BLL.Agents.PlacesAgent;
+using SmartTravelPlaners.BLL.Agents.Plugins;
+using SmartTravelPlaners.BLL.Agents.Settings;
 using SmartTravelPlaners.BLL.DTOs.Auth;
-using SmartTravelPlaners.BLL.ExternalApis.FourSquare.Services;
 using SmartTravelPlaners.BLL.ExternalApis.FourSquare.Interfaces;
+using SmartTravelPlaners.BLL.ExternalApis.FourSquare.Services;
+using SmartTravelPlaners.BLL.ExternalApis.HotelsAPI.Interfaces;
+using SmartTravelPlaners.BLL.ExternalApis.HotelsAPI.Services;
+using SmartTravelPlaners.BLL.ExternalApis.HotelsAPI.Settings;
 using SmartTravelPlaners.BLL.ExternalApis.Settings.Places;
-
 using SmartTravelPlaners.BLL.Services.Abstract;
 using SmartTravelPlaners.BLL.Services.Concrete;
 using SmartTravelPlaners.DAL.Context;
 using SmartTravelPlaners.DAL.Entities;
 using SmartTravelPlaners.DAL.Repositories.Abstract;
 using SmartTravelPlaners.DAL.Repositories.Concrete;
+using System.ClientModel;
+using System.Runtime;
 using System.Text;
-using SmartTravelPlaners.BLL.ExternalApis.HotelsAPI.Settings;
-using SmartTravelPlaners.BLL.ExternalApis.HotelsAPI.Interfaces;
-using SmartTravelPlaners.BLL.ExternalApis.HotelsAPI.Services;
 
 namespace SmartTravelPlaners.PL
 {
@@ -130,8 +139,48 @@ namespace SmartTravelPlaners.PL
                 SmartTravelPlaners.BLL.ExternalApis.Services.FlightService>();
 
             // TODO: Register Semantic Kernel & OpenAI Agents
+            //builder.Services.Configure<AiSettings>(
+            //  builder.Configuration.GetSection("AI"));
+            ////connect with provider where i use model
+            //var openAiClient = new OpenAIClient(
+            //    new ApiKeyCredential(builder.Configuration.GetSection("AI")["ApiKey"]),
+
+            //    new OpenAIClientOptions { Endpoint = new Uri("https://models.github.ai/inference") }
+            //    );
+            ////use chatt client to send and receive message
+            ////UseFunctionInvocation()=>make it use functions like agent
+            //builder.Services.AddSingleton<IChatClient>(sp =>
+            //new ChatClientBuilder(openAiClient.GetChatClient(builder.Configuration["AI:Model"])
+            //.AsIChatClient()).UseFunctionInvocation().Build());
 
 
+            //builder.Services.AddSingleton(openAiClient);
+           
+            builder.Services.AddScoped<Kernel>(sp =>
+            {
+                var config = sp.GetRequiredService<IConfiguration>();
+                var placesService = sp.GetRequiredService<IPlacesApiService>();
+                
+
+                var kernelBuilder = Kernel.CreateBuilder();
+
+                kernelBuilder.AddOpenAIChatCompletion(
+                    modelId: config["AI:Model"],
+                    apiKey: config["AI:ApiKey"],
+                    endpoint: new Uri(config["AI:Endpoint"])
+                );
+
+                var kernel = kernelBuilder.Build();
+
+                kernel.Plugins.AddFromObject(
+                    new PlacesPlugin(placesService)
+                );
+
+                return kernel;
+            });
+
+
+            builder.Services.AddScoped<PlacesAgent>();
             //External APis
 
             //Hotel API
@@ -156,7 +205,7 @@ namespace SmartTravelPlaners.PL
                 client.BaseAddress = new Uri("https://google.serper.dev");
             });
 
-            builder.Services.AddScoped<IPlacesApiService, PlacesApiService>();
+            builder.Services.AddScoped<IPlacesApiService, PlacesApiService>();    
             // =======================================================
             // 6. BUILD APP
             // =======================================================
@@ -165,6 +214,7 @@ namespace SmartTravelPlaners.PL
             // =======================================================
             // 7. MIDDLEWARE PIPELINE
             // =======================================================
+            
             app.UseSwagger();
             app.UseSwaggerUI(c =>
             {
