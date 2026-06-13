@@ -11,6 +11,12 @@ using SmartTravelPlaners.DAL.Entities;
 using SmartTravelPlaners.DAL.Repositories.Abstract;
 using SmartTravelPlaners.DAL.Repositories.Concrete;
 using System.Text;
+using SmartTravelPlaners.BLL.ExternalApis.HotelsAPI.Settings;
+using SmartTravelPlaners.BLL.ExternalApis.HotelsAPI.Interfaces;
+using SmartTravelPlaners.BLL.ExternalApis.HotelsAPI.Services;
+using SmartTravelPlaners.BLL.ExternalApis.WeatherAPI.Settings;
+using SmartTravelPlaners.BLL.ExternalApis.WeatherAPI.Interfaces;
+using SmartTravelPlaners.BLL.ExternalApis.WeatherAPI.Services;
 
 namespace SmartTravelPlaners.PL
 {
@@ -122,6 +128,38 @@ namespace SmartTravelPlaners.PL
 
             // TODO: Register Semantic Kernel & OpenAI Agents
 
+
+            //External APis
+
+            //Hotel API
+            builder.Services.Configure<HotelApiSettings>(builder.Configuration.GetSection("HotelApiSettings"));
+            builder.Services.AddHttpClient<IHotelApiService, HotelApiService>();
+
+            //Places API
+
+            builder.Services.Configure<FoursquareSettings>(
+           builder.Configuration.GetSection("FoursquareSettings"));
+
+            builder.Services.Configure<SerperSettings>(
+                builder.Configuration.GetSection("SerperSettings"));
+
+            builder.Services.AddHttpClient("Foursquare", client =>
+            {
+                client.BaseAddress = new Uri("https://places-api.foursquare.com");
+            });
+
+            builder.Services.AddHttpClient("Serper", client =>
+            {
+                client.BaseAddress = new Uri("https://google.serper.dev");
+            });
+
+            builder.Services.AddScoped<IPlacesApiService, PlacesApiService>();
+            // Weather API
+            builder.Services.Configure<WeatherApiSettings>(
+                builder.Configuration.GetSection("WeatherApiSettings")
+            );
+
+            builder.Services.AddHttpClient<IWeatherApiService, WeatherApiService>();
             // =======================================================
             // 6. BUILD APP
             // =======================================================
