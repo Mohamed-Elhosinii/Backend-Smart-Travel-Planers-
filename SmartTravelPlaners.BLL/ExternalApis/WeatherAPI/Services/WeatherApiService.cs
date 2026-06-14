@@ -22,27 +22,19 @@ namespace SmartTravelPlaners.BLL.ExternalApis.WeatherAPI.Services
 
         public async Task<object> GetWeatherForTripAsync(string cityName, DateTime startDate, DateTime endDate)
         {
-            var daysUntilTrip = (startDate.Date - DateTime.Today).TotalDays;
+            string start = startDate.ToString("yyyy-MM-dd");
+            string end = endDate.ToString("yyyy-MM-dd");
 
-            if (daysUntilTrip >= 0 && daysUntilTrip <= 14)
+            var url = $"{_settings.BaseUrl}timeline/{cityName}/{start}/{end}?unitGroup=metric&key={_settings.ApiKey}&include=days&contentType=json";
+
+            try
             {
-                int totalForecastDays = (int)(endDate.Date - DateTime.Today).TotalDays + 1;
-                if (totalForecastDays > 14) totalForecastDays = 14;
-
-                var url = $"{_settings.BaseUrl}forecast.json?key={_settings.ApiKey}&q={cityName}&days={totalForecastDays}&aqi=no";
-
-                var response = await _httpClient.GetFromJsonAsync<WeatherForecastDto>(url);
-                return response ?? new WeatherForecastDto();
+                var response = await _httpClient.GetFromJsonAsync<VisualCrossingResponseDto>(url);
+                return response ?? new VisualCrossingResponseDto();
             }
-            else
+            catch (Exception)
             {
-                var historicalStartDate = startDate.AddYears(-1).ToString("yyyy-MM-dd");
-                var historicalEndDate = endDate.AddYears(-1).ToString("yyyy-MM-dd");
-
-                var url = $"{_settings.BaseUrl}history.json?key={_settings.ApiKey}&q={cityName}&dt={historicalStartDate}&end_dt={historicalEndDate}";
-
-                var response = await _httpClient.GetFromJsonAsync<WeatherHistoryDto>(url);
-                return response ?? new WeatherHistoryDto();
+                return new VisualCrossingResponseDto { Address = cityName };
             }
         }
     }
