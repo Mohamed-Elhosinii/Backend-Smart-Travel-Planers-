@@ -137,15 +137,6 @@ namespace SmartTravelPlaners.PL
             builder.Services.AddScoped<IUserProfileRepository, UserProfileRepository>();
             builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
-            // Flight Service
-            builder.Services.AddHttpClient();
-            builder.Services.AddScoped<
-                SmartTravelPlaners.BLL.ExternalApis.FlightAPI.Interfaces.IFlightService,
-                SmartTravelPlaners.BLL.ExternalApis.FlightAPI.Services.FlightService>();
-
-            // Flight Plugin
-            builder.Services.AddScoped<FlightPlugin>();
-
             // TODO: Register Semantic Kernel & OpenAI Agents
 
 
@@ -155,31 +146,38 @@ namespace SmartTravelPlaners.PL
             builder.Services.Configure<HotelApiSettings>(builder.Configuration.GetSection("HotelApiSettings"));
             builder.Services.AddHttpClient<IHotelApiService, HotelApiService>();
 
-            //Places API
+            // Flight Service
+            builder.Services.AddHttpClient();
+            builder.Services.AddScoped<
+                SmartTravelPlaners.BLL.ExternalApis.FlightAPI.Interfaces.IFlightService,
+                SmartTravelPlaners.BLL.ExternalApis.FlightAPI.Services.FlightService>();
+            // Flight Plugin
+            builder.Services.AddScoped<FlightPlugin>();
 
+            //Places API
             builder.Services.Configure<FoursquareSettings>(
            builder.Configuration.GetSection("FoursquareSettings"));
 
             builder.Services.Configure<SerperSettings>(
                 builder.Configuration.GetSection("SerperSettings"));
-
             builder.Services.AddHttpClient("Foursquare", client =>
             {
                 client.BaseAddress = new Uri("https://places-api.foursquare.com");
             });
-
             builder.Services.AddHttpClient("Serper", client =>
             {
                 client.BaseAddress = new Uri("https://google.serper.dev");
             });
-
             builder.Services.AddScoped<IPlacesApiService, PlacesApiService>();
+
             // Weather API
             builder.Services.Configure<WeatherApiSettings>(
                 builder.Configuration.GetSection("WeatherApiSettings")
             );
-
             builder.Services.AddHttpClient<IWeatherApiService, WeatherApiService>();
+            // Register Of Weather Agent
+            builder.Services.AddScoped<WeatherAgentService>();
+
             // =======================================================
             // 6. BUILD APP
             // =======================================================
