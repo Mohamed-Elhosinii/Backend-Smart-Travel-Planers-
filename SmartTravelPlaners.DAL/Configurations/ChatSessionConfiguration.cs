@@ -10,10 +10,14 @@ namespace SmartTravelPlaners.DAL.Configurations
         {
             builder.HasKey(cs => cs.Id);
 
+            // TripId is nullable - gets assigned after AI creates the trip
             builder.Property(cs => cs.TripId)
-                .IsRequired();
+                .IsRequired(false);
 
             builder.Property(cs => cs.UserId)
+                .IsRequired();
+
+            builder.Property(cs => cs.Stage)
                 .IsRequired();
 
             builder.Property(cs => cs.CreatedAt)
@@ -22,12 +26,14 @@ namespace SmartTravelPlaners.DAL.Configurations
             builder.Property(cs => cs.UpdatedAt)
                 .IsRequired();
 
-           builder.HasOne(cs => cs.Trip)
-          .WithOne(t => t.ChatSession)
-          .HasForeignKey<ChatSession>(cs => cs.TripId)
-          .OnDelete(DeleteBehavior.NoAction); 
+            // optional relationship with Trip
+            builder.HasOne(cs => cs.Trip)
+                .WithOne(t => t.ChatSession)
+                .HasForeignKey<ChatSession>(cs => cs.TripId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.NoAction);
 
-            // Relationship with ApplicationUser
+            // relationship with ApplicationUser
             builder.HasOne(cs => cs.User)
                 .WithMany(u => u.ChatSessions)
                 .HasForeignKey(cs => cs.UserId)
