@@ -2,9 +2,9 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.SemanticKernel;
 using SmartTravelPlaners.BLL.DTOs.Auth;
 using SmartTravelPlaners.BLL.ExternalApis.FlightAPI.Plugins;
-using SmartTravelPlaners.BLL.Services;
 using SmartTravelPlaners.BLL.Services.Abstract;
 using SmartTravelPlaners.BLL.Services.Concrete;
 using SmartTravelPlaners.DAL.Context;
@@ -120,22 +120,39 @@ namespace SmartTravelPlaners.PL
 
             // Flight Service
             builder.Services.AddHttpClient();
-            builder.Services.AddScoped<
-                SmartTravelPlaners.BLL.ExternalApis.FlightAPI.Interfaces.IFlightService,
+            builder.Services.AddScoped<SmartTravelPlaners.BLL.ExternalApis.FlightAPI.Interfaces.IFlightService,
                 SmartTravelPlaners.BLL.ExternalApis.FlightAPI.Services.FlightService>();
 
             // Flight Plugin
             builder.Services.AddScoped<FlightPlugin>();
 
-            // TODO: Register Semantic Kernel & OpenAI Agents
+            // =======================================================
+            // 6. SEMANTIC KERNEL + CHAT
+            // =======================================================
+
+            // Semantic Kernel - singleton, one instance for the whole app
+            builder.Services.AddSingleton<Kernel>(sp =>
+            {
+                var config = sp.GetRequiredService<IConfiguration>();
+                var kernelBuilder = Kernel.CreateBuilder();
+                kernelBuilder.AddOpenAIChatCompletion(
+                    modelId: "gpt-4o-mini",
+                    apiKey: config["OpenAI:ApiKey"]!
+                );
+                return kernelBuilder.Build();
+            });
+
+            // Chat Repository & Service
+            builder.Services.AddScoped<IChatRepository, ChatRepository>();
+            builder.Services.AddScoped<ChatService>();
 
             // =======================================================
-            // 6. BUILD APP
+            // 7. BUILD APP
             // =======================================================
             var app = builder.Build();
 
             // =======================================================
-            // 7. MIDDLEWARE PIPELINE
+            // 8. MIDDLEWARE PIPELINE
             // =======================================================
             app.UseSwagger();
             app.UseSwaggerUI(c =>
@@ -145,12 +162,9 @@ namespace SmartTravelPlaners.PL
             });
 
             app.UseHttpsRedirection();
-
             app.UseAuthentication();
             app.UseAuthorization();
-
             app.MapControllers();
-
             app.Run();
         }
     }
