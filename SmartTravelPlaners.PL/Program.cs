@@ -7,9 +7,15 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using OpenAI;
+<<<<<<< HEAD
 
 using SmartTravelPlaners.BLL.Agents.Plugins;
 
+=======
+using SmartTravelPlaners.BLL.Agents.PlacesAgent;
+using SmartTravelPlaners.BLL.Agents.Plugins;
+using SmartTravelPlaners.BLL.Agents.Settings;
+>>>>>>> d94a882e10e94011651f08552de72b7331b4a831
 using SmartTravelPlaners.BLL.DTOs.Auth;
 using SmartTravelPlaners.BLL.ExternalApis.FourSquare.Interfaces;
 using SmartTravelPlaners.BLL.ExternalApis.FourSquare.Services;
@@ -139,9 +145,54 @@ namespace SmartTravelPlaners.PL
                 SmartTravelPlaners.BLL.ExternalApis.Services.FlightService>();
 
             // TODO: Register Semantic Kernel & OpenAI Agents
+<<<<<<< HEAD
             
            
           
+=======
+            //builder.Services.Configure<AiSettings>(
+            //  builder.Configuration.GetSection("AI"));
+            ////connect with provider where i use model
+            //var openAiClient = new OpenAIClient(
+            //    new ApiKeyCredential(builder.Configuration.GetSection("AI")["ApiKey"]),
+
+            //    new OpenAIClientOptions { Endpoint = new Uri("https://models.github.ai/inference") }
+            //    );
+            ////use chatt client to send and receive message
+            ////UseFunctionInvocation()=>make it use functions like agent
+            //builder.Services.AddSingleton<IChatClient>(sp =>
+            //new ChatClientBuilder(openAiClient.GetChatClient(builder.Configuration["AI:Model"])
+            //.AsIChatClient()).UseFunctionInvocation().Build());
+
+
+            //builder.Services.AddSingleton(openAiClient);
+           
+            builder.Services.AddScoped<Kernel>(sp =>
+            {
+                var config = sp.GetRequiredService<IConfiguration>();
+                var placesService = sp.GetRequiredService<IPlacesApiService>();
+                
+
+                var kernelBuilder = Kernel.CreateBuilder();
+
+                kernelBuilder.AddOpenAIChatCompletion(
+                    modelId: config["AI:Model"],
+                    apiKey: config["AI:ApiKey"],
+                    endpoint: new Uri(config["AI:Endpoint"])
+                );
+
+                var kernel = kernelBuilder.Build();
+
+                kernel.Plugins.AddFromObject(
+                    new PlacesPlugin(placesService)
+                );
+
+                return kernel;
+            });
+
+
+            builder.Services.AddScoped<PlacesAgent>();
+>>>>>>> d94a882e10e94011651f08552de72b7331b4a831
             //External APis
 
             //Hotel API
