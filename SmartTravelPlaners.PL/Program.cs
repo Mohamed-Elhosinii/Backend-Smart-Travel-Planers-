@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using SmartTravelPlaners.BLL.DTOs.Auth;
+using SmartTravelPlaners.BLL.ExternalApis.FlightAPI.Plugins;
+using SmartTravelPlaners.BLL.Services;
 using SmartTravelPlaners.BLL.ExternalApis.FourSquare.Services;
 using SmartTravelPlaners.BLL.ExternalApis.FourSquare.Interfaces;
 using SmartTravelPlaners.BLL.ExternalApis.Settings.Places;
@@ -33,6 +35,15 @@ namespace SmartTravelPlaners.PL
             // 1. CONTROLLERS & SWAGGER
             // =======================================================
             builder.Services.AddControllers();
+            builder.Services.AddCors(options =>
+            {
+                options.AddPolicy("AllowAngular", policy =>
+                {
+                    policy.WithOrigins("http://localhost:4200")
+                          .AllowAnyHeader()
+                          .AllowAnyMethod();
+                });
+            });
             builder.Services.AddEndpointsApiExplorer();
 
             builder.Services.AddSwaggerGen(c =>
@@ -129,8 +140,11 @@ namespace SmartTravelPlaners.PL
             // Flight Service
             builder.Services.AddHttpClient();
             builder.Services.AddScoped<
-                SmartTravelPlaners.BLL.ExternalApis.Interfaces.IFlightService,
-                SmartTravelPlaners.BLL.ExternalApis.Services.FlightService>();
+                SmartTravelPlaners.BLL.ExternalApis.FlightAPI.Interfaces.IFlightService,
+                SmartTravelPlaners.BLL.ExternalApis.FlightAPI.Services.FlightService>();
+
+            // Flight Plugin
+            builder.Services.AddScoped<FlightPlugin>();
 
             // TODO: Register Semantic Kernel & OpenAI Agents
 
@@ -182,6 +196,7 @@ namespace SmartTravelPlaners.PL
             });
 
             app.UseHttpsRedirection();
+            app.UseCors("AllowAngular");
 
             app.UseAuthentication();
             app.UseAuthorization();
