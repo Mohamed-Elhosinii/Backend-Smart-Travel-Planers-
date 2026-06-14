@@ -1,4 +1,4 @@
-﻿namespace SmartTravelPlaners.BLL.ExternalApis.DTOs
+﻿namespace SmartTravelPlaners.BLL.ExternalApis.FlightAPI.DTOs
 {
     public class FlightDto
     {
