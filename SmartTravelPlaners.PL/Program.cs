@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.SemanticKernel;
 using SmartTravelPlaners.BLL.DTOs.Auth;
 using SmartTravelPlaners.BLL.ExternalApis.FlightAPI.Plugins;
 using SmartTravelPlaners.BLL.Services;
@@ -148,8 +149,7 @@ namespace SmartTravelPlaners.PL
 
             // Flight Service
             builder.Services.AddHttpClient();
-            builder.Services.AddScoped<
-                SmartTravelPlaners.BLL.ExternalApis.FlightAPI.Interfaces.IFlightService,
+            builder.Services.AddScoped<SmartTravelPlaners.BLL.ExternalApis.FlightAPI.Interfaces.IFlightService,
                 SmartTravelPlaners.BLL.ExternalApis.FlightAPI.Services.FlightService>();
             // Flight Plugin
             builder.Services.AddScoped<FlightPlugin>();
@@ -179,12 +179,12 @@ namespace SmartTravelPlaners.PL
             builder.Services.AddScoped<WeatherAgentService>();
 
             // =======================================================
-            // 6. BUILD APP
+            // 7. BUILD APP
             // =======================================================
             var app = builder.Build();
 
             // =======================================================
-            // 7. MIDDLEWARE PIPELINE
+            // 8. MIDDLEWARE PIPELINE
             // =======================================================
             app.UseSwagger();
             app.UseSwaggerUI(c =>
@@ -198,9 +198,7 @@ namespace SmartTravelPlaners.PL
 
             app.UseAuthentication();
             app.UseAuthorization();
-
             app.MapControllers();
-
             app.Run();
         }
     }
