@@ -25,6 +25,15 @@ namespace SmartTravelPlaners.PL
             // 1. CONTROLLERS & SWAGGER
             // =======================================================
             builder.Services.AddControllers();
+            builder.Services.AddCors(options =>
+            {
+                options.AddPolicy("AllowAngular", policy =>
+                {
+                    policy.WithOrigins("http://localhost:4200")
+                          .AllowAnyHeader()
+                          .AllowAnyMethod();
+                });
+            });
             builder.Services.AddEndpointsApiExplorer();
 
             builder.Services.AddSwaggerGen(c =>
@@ -145,6 +154,7 @@ namespace SmartTravelPlaners.PL
             });
 
             app.UseHttpsRedirection();
+            app.UseCors("AllowAngular");
 
             app.UseAuthentication();
             app.UseAuthorization();
