@@ -1,22 +1,31 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
-using SmartTravelPlaners.BLL.DTOs.Auth;
-using SmartTravelPlaners.BLL.ExternalApis.FourSquare.Services;
-using SmartTravelPlaners.BLL.ExternalApis.FourSquare.Interfaces;
-using SmartTravelPlaners.BLL.ExternalApis.Settings.Places;
+using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.ChatCompletion;
+using OpenAI;
 
+using SmartTravelPlaners.BLL.Agents.Plugins;
+
+using SmartTravelPlaners.BLL.DTOs.Auth;
+using SmartTravelPlaners.BLL.ExternalApis.FourSquare.Interfaces;
+using SmartTravelPlaners.BLL.ExternalApis.FourSquare.Services;
+using SmartTravelPlaners.BLL.ExternalApis.HotelsAPI.Interfaces;
+using SmartTravelPlaners.BLL.ExternalApis.HotelsAPI.Services;
+using SmartTravelPlaners.BLL.ExternalApis.HotelsAPI.Settings;
+using SmartTravelPlaners.BLL.ExternalApis.Settings.Places;
 using SmartTravelPlaners.BLL.Services.Abstract;
 using SmartTravelPlaners.BLL.Services.Concrete;
 using SmartTravelPlaners.DAL.Context;
 using SmartTravelPlaners.DAL.Entities;
 using SmartTravelPlaners.DAL.Repositories.Abstract;
 using SmartTravelPlaners.DAL.Repositories.Concrete;
+using System.ClientModel;
+using System.Runtime;
 using System.Text;
-using SmartTravelPlaners.BLL.ExternalApis.HotelsAPI.Settings;
-using SmartTravelPlaners.BLL.ExternalApis.HotelsAPI.Interfaces;
-using SmartTravelPlaners.BLL.ExternalApis.HotelsAPI.Services;
 
 namespace SmartTravelPlaners.PL
 {
@@ -130,8 +139,9 @@ namespace SmartTravelPlaners.PL
                 SmartTravelPlaners.BLL.ExternalApis.Services.FlightService>();
 
             // TODO: Register Semantic Kernel & OpenAI Agents
-
-
+            
+           
+          
             //External APis
 
             //Hotel API
@@ -156,7 +166,7 @@ namespace SmartTravelPlaners.PL
                 client.BaseAddress = new Uri("https://google.serper.dev");
             });
 
-            builder.Services.AddScoped<IPlacesApiService, PlacesApiService>();
+            builder.Services.AddScoped<IPlacesApiService, PlacesApiService>();    
             // =======================================================
             // 6. BUILD APP
             // =======================================================
@@ -165,6 +175,7 @@ namespace SmartTravelPlaners.PL
             // =======================================================
             // 7. MIDDLEWARE PIPELINE
             // =======================================================
+            
             app.UseSwagger();
             app.UseSwaggerUI(c =>
             {
