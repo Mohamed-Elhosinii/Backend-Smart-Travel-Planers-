@@ -1,6 +1,6 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using SmartTravelPlaners.BLL.Services.Concrete;
+using SmartTravelPlaners.BLL.Features.Chat.Interfaces;
 using System.Security.Claims;
 
 namespace SmartTravelPlaners.PL.Controllers
@@ -10,15 +10,14 @@ namespace SmartTravelPlaners.PL.Controllers
     [Authorize]
     public class ChatController : ControllerBase
     {
-        private readonly ChatService _chatService;
+        private readonly IChatService _chatService;   // <-- IChatService بدل ChatService
 
-        public ChatController(ChatService chatService)
+        public ChatController(IChatService chatService)
         {
             _chatService = chatService;
         }
 
         // POST api/chat/session
-        // creates or returns existing session for the logged-in user
         [HttpPost("session")]
         public async Task<IActionResult> CreateSession()
         {
@@ -30,7 +29,6 @@ namespace SmartTravelPlaners.PL.Controllers
         }
 
         // POST api/chat/send
-        // sends a message and returns AI reply
         [HttpPost("send")]
         public async Task<IActionResult> Send([FromBody] SendMessageDto dto)
         {
@@ -42,7 +40,6 @@ namespace SmartTravelPlaners.PL.Controllers
         }
 
         // GET api/chat/history/{sessionId}
-        // returns all messages for a session
         [HttpGet("history/{sessionId}")]
         public async Task<IActionResult> GetHistory(Guid sessionId)
         {

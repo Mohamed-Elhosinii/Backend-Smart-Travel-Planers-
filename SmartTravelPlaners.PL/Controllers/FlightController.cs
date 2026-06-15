@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
-using SmartTravelPlaners.BLL.ExternalApis.FlightAPI.DTOs;
-using SmartTravelPlaners.BLL.ExternalApis.FlightAPI.Interfaces;
+using SmartTravelPlaners.BLL.Features.Flight.DTOs;
+using SmartTravelPlaners.BLL.Features.Flight.Interfaces;
 
 namespace SmartTravelPlaners.PL.Controllers
 {

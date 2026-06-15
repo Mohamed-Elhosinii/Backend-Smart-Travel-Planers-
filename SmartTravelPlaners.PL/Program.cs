@@ -1,28 +1,40 @@
+
+
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.SemanticKernel;
-using SmartTravelPlaners.BLL.DTOs.Auth;
-using SmartTravelPlaners.BLL.ExternalApis.FlightAPI.Plugins;
-using SmartTravelPlaners.BLL.Services;
-using SmartTravelPlaners.BLL.ExternalApis.FourSquare.Services;
-using SmartTravelPlaners.BLL.ExternalApis.FourSquare.Interfaces;
-using SmartTravelPlaners.BLL.ExternalApis.Settings.Places;
+using OpenAI;
+using SmartTravelPlaners.BLL.Features.Flight.Services;
+using SmartTravelPlaners.BLL.Features.Flight.Interfaces;
+using SmartTravelPlaners.BLL.Features.Flight.Plugins;
 
+using SmartTravelPlaners.BLL.DTOs.Auth;
+using SmartTravelPlaners.BLL.Features.Chat.Interfaces;
+using SmartTravelPlaners.BLL.Features.Chat.Services;
+using SmartTravelPlaners.BLL.Features.Hotel.Interfaces;
+using SmartTravelPlaners.BLL.Features.Hotel.Plugins;
+using SmartTravelPlaners.BLL.Features.Hotel.Services;
+using SmartTravelPlaners.BLL.Features.Hotel.Settings;
+using SmartTravelPlaners.BLL.Features.Orchestrator.Interfaces;
+using SmartTravelPlaners.BLL.Features.Orchestrator.Services;
+using SmartTravelPlaners.BLL.Features.Place.Interfaces;
+using SmartTravelPlaners.BLL.Features.Place.Plugins;
+using SmartTravelPlaners.BLL.Features.Place.Services;
+using SmartTravelPlaners.BLL.Features.Place.Settings;
+using SmartTravelPlaners.BLL.Features.Weather.Interfaces;
+using SmartTravelPlaners.BLL.Features.Weather.Plugins;
+using SmartTravelPlaners.BLL.Features.Weather.Services;
+using SmartTravelPlaners.BLL.Features.Weather.Settings;
 using SmartTravelPlaners.BLL.Services.Abstract;
 using SmartTravelPlaners.BLL.Services.Concrete;
 using SmartTravelPlaners.DAL.Context;
 using SmartTravelPlaners.DAL.Entities;
 using SmartTravelPlaners.DAL.Repositories.Abstract;
 using SmartTravelPlaners.DAL.Repositories.Concrete;
+using System.ClientModel;
 using System.Text;
-using SmartTravelPlaners.BLL.ExternalApis.HotelsAPI.Settings;
-using SmartTravelPlaners.BLL.ExternalApis.HotelsAPI.Interfaces;
-using SmartTravelPlaners.BLL.ExternalApis.HotelsAPI.Services;
-using SmartTravelPlaners.BLL.ExternalApis.WeatherAPI.Settings;
-using SmartTravelPlaners.BLL.ExternalApis.WeatherAPI.Interfaces;
-using SmartTravelPlaners.BLL.ExternalApis.WeatherAPI.Services;
 
 namespace SmartTravelPlaners.PL
 {
@@ -125,7 +137,7 @@ namespace SmartTravelPlaners.PL
             });
 
             // =======================================================
-            // 5. APPLICATION SERVICES
+            // 5. APPLICATION SERVICES (Auth / Email / Repos)
             // =======================================================
             builder.Services.Configure<EmailSettings>(
                 builder.Configuration.GetSection("EmailSettings"));
@@ -138,28 +150,54 @@ namespace SmartTravelPlaners.PL
             builder.Services.AddScoped<IUserProfileRepository, UserProfileRepository>();
             builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
-            // TODO: Register Semantic Kernel & OpenAI Agents
+            // =======================================================
+            // 6. SEMANTIC KERNEL + GITHUB MODELS
+            // =======================================================
+            // GitHub Models is an OpenAI-compatible endpoint, authenticated
+            // with a GitHub Personal Access Token instead of an OpenAI API key.
+            var githubModelsConfig = builder.Configuration.GetSection("GitHubModels");
+            var githubEndpoint = githubModelsConfig["Endpoint"]!;   // e.g. https://models.inference.ai.azure.com
+            var githubToken = githubModelsConfig["Token"]!;         // GitHub PAT
+            var githubModelId = githubModelsConfig["ModelId"]!;     // e.g. gpt-4o-mini
 
+            builder.Services.AddKernel();
 
-            //External APis
+            // Build an OpenAIClient pointed at the GitHub Models endpoint,
+            // then register it as the chat completion service for the Kernel.
+            builder.Services.AddOpenAIChatCompletion(
+                modelId: githubModelId,
+                openAIClient: new OpenAIClient(
+                    new ApiKeyCredential(githubToken),
+                    new OpenAIClientOptions { Endpoint = new Uri(githubEndpoint) }
+                ));
 
-            //Hotel API
-            builder.Services.Configure<HotelApiSettings>(builder.Configuration.GetSection("HotelApiSettings"));
+            // =======================================================
+            // 7. EXTERNAL APIS (Hotel / Flight / Places / Weather)
+            // =======================================================
+
+            // ---- Hotel API (StayAPI) ----
+            builder.Services.Configure<HotelApiSettings>(
+                builder.Configuration.GetSection("HotelApiSettings"));
             builder.Services.AddHttpClient<IHotelApiService, HotelApiService>();
 
-            // Flight Service
+            // ---- Flight API ----
             builder.Services.AddHttpClient();
-            builder.Services.AddScoped<SmartTravelPlaners.BLL.ExternalApis.FlightAPI.Interfaces.IFlightService,
-                SmartTravelPlaners.BLL.ExternalApis.FlightAPI.Services.FlightService>();
-            // Flight Plugin
+            builder.Services.AddHttpClient<IFlightService, FlightService>();
+
+            builder.Services.AddScoped<IFlightService, FlightService>();
+
+            builder.Services.AddScoped<IWeatherApiService, WeatherApiService>();
+            builder.Services.AddScoped<WeatherPlugin>();
+            builder.Services.AddScoped<PlacesPlugin>();
+            builder.Services.AddScoped<HotelPlugin>();
             builder.Services.AddScoped<FlightPlugin>();
 
-            //Places API
+            // ---- Places API (Foursquare + Serper) ----
             builder.Services.Configure<FoursquareSettings>(
-           builder.Configuration.GetSection("FoursquareSettings"));
-
+                builder.Configuration.GetSection("FoursquareSettings"));
             builder.Services.Configure<SerperSettings>(
                 builder.Configuration.GetSection("SerperSettings"));
+
             builder.Services.AddHttpClient("Foursquare", client =>
             {
                 client.BaseAddress = new Uri("https://places-api.foursquare.com");
@@ -170,21 +208,30 @@ namespace SmartTravelPlaners.PL
             });
             builder.Services.AddScoped<IPlacesApiService, PlacesApiService>();
 
-            // Weather API
+            // ---- Weather API ----
             builder.Services.Configure<WeatherApiSettings>(
-                builder.Configuration.GetSection("WeatherApiSettings")
-            );
+                builder.Configuration.GetSection("WeatherApiSettings"));
             builder.Services.AddHttpClient<IWeatherApiService, WeatherApiService>();
-            // Register Of Weather Agent
-            builder.Services.AddScoped<WeatherAgentService>();
+            builder.Services.AddScoped<WeatherApiService>();
 
             // =======================================================
-            // 7. BUILD APP
+            // 8. CHAT SERVICE
+            // =======================================================
+            builder.Services.AddScoped<IChatService, ChatService>();   // <-- بدل AddScoped<ChatService>()
+            builder.Services.AddScoped<IChatRepository, ChatRepository>();
+
+
+
+            //orchestrator 
+            builder.Services.AddScoped<ITripOrchestratorService, TripOrchestratorService>();
+
+            // =======================================================
+            // 9. BUILD APP
             // =======================================================
             var app = builder.Build();
 
             // =======================================================
-            // 8. MIDDLEWARE PIPELINE
+            // 10. MIDDLEWARE PIPELINE
             // =======================================================
             app.UseSwagger();
             app.UseSwaggerUI(c =>

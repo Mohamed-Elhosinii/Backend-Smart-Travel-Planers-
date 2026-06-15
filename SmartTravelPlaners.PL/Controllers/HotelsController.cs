@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
-using SmartTravelPlaners.BLL.ExternalApis.HotelsAPI.Interfaces;
+using SmartTravelPlaners.BLL.Features.Hotel.Interfaces;
 
 namespace SmartTravelPlaners.PL.Controllers
 {

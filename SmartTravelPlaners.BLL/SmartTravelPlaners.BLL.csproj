@@ -1,6 +1,12 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <Compile Remove="Agents\**" />
+    <EmbeddedResource Remove="Agents\**" />
+    <None Remove="Agents\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\SmartTravelPlaners.DAL\SmartTravelPlaners.DAL.csproj" />
   </ItemGroup>
 
@@ -17,10 +23,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Agents\Chat\" />
-    <Folder Include="Agents\Services\" />
-    <Folder Include="Agents\Plugins\" />
-    <Folder Include="Agents\Orchestrator\" />
+    <Folder Include="Features\Flight\Settings\" />
+    <Folder Include="Features\Orchestrator\Prompts\" />
   </ItemGroup>
 
   <PropertyGroup>
