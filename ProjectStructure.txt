@@ -1,0 +1,265 @@
+================================================================================
+  SMART TRAVEL PLANERS - PROJECT STRUCTURE
+  Solution: Backend (Smart Travel Planers).slnx
+================================================================================
+
+The solution follows a 3-layer architecture:
+  - DAL  (Data Access Layer)   : Database entities, repositories, migrations
+  - BLL  (Business Logic Layer): Services, DTOs, external APIs, AI agents
+  - PL   (Presentation Layer)  : Controllers, entry point, configuration
+
+================================================================================
+  LAYER 1: SmartTravelPlaners.DAL
+  (Data Access Layer - handles all database operations)
+================================================================================
+
+SmartTravelPlaners.DAL/
+|
+|-- SmartTravelPlaners.DAL.csproj          [Project file]
+|
+|-- Context/
+|   |-- ApplicationDbContext.cs            [EF Core DbContext - registers all DbSets and applies configurations]
+|
+|-- Entities/                              [Database table models]
+|   |-- ApplicationUser .cs               [Extends IdentityUser - the app user entity]
+|   |-- Trip.cs                            [Represents a planned travel trip]
+|   |-- TripDay.cs                         [Represents a single day inside a trip]
+|   |-- TripPreference.cs                  [User preferences tied to a trip]
+|   |-- Activity.cs                        [An activity/event within a trip day]
+|   |-- Flight.cs                          [Flight booking entity linked to a trip]
+|   |-- Hotel.cs                           [Hotel booking entity linked to a trip]
+|   |-- PlaceCache.cs                      [Cached place data from external APIs]
+|   |-- ChatSession.cs                     [A chat conversation session]
+|   |-- ChatMessage.cs                     [A single message inside a chat session]
+|   |-- UserProfile.cs                     [Extended profile data for a user]
+|   |-- RefreshToken.cs                    [JWT refresh token storage]
+|
+|-- Enums/                                 [Shared enumeration types]
+|   |-- ActivityStatus.cs                  [Status of an activity (e.g. Pending, Done)]
+|   |-- ActivityType.cs                    [Type of activity (e.g. Restaurant, Tour)]
+|   |-- BookingStatus.cs                   [Status of a booking (e.g. Confirmed, Cancelled)]
+|   |-- CabinClass.cs                      [Flight cabin class (e.g. Economy, Business)]
+|   |-- ChatStage.cs                       [Stage/step of a chat conversation flow]
+|   |-- MessageRole.cs                     [Role of a message sender (e.g. User, Assistant)]
+|   |-- TripStatus.cs                      [Status of a trip (e.g. Draft, Active, Completed)]
+|
+|-- Configurations/                        [EF Core Fluent API table configurations]
+|   |-- ActivityConfiguration.cs           [Column/relationship config for Activity]
+|   |-- ChatMessageConfiguration.cs        [Column/relationship config for ChatMessage]
+|   |-- ChatSessionConfiguration.cs        [Column/relationship config for ChatSession]
+|   |-- FlightConfiguration.cs             [Column/relationship config for Flight]
+|   |-- HotelConfiguration.cs              [Column/relationship config for Hotel]
+|   |-- PlaceCacheConfiguration.cs         [Column/relationship config for PlaceCache]
+|   |-- TripConfiguration.cs               [Column/relationship config for Trip]
+|   |-- TripDayConfiguration.cs            [Column/relationship config for TripDay]
+|   |-- TripPreferenceConfiguration.cs     [Column/relationship config for TripPreference]
+|   |-- UserProfileConfiguration.cs        [Column/relationship config for UserProfile]
+|
+|-- Repositories/
+|   |-- Abstract/                          [Repository interfaces (contracts)]
+|   |   |-- IGenericRepository.cs          [Generic CRUD interface for all entities]
+|   |   |-- ITripRepository.cs             [Trip-specific data access interface]
+|   |   |-- IUserProfileRepository.cs      [UserProfile-specific data access interface]
+|   |   |-- IChatRepository.cs             [Chat session/message data access interface]
+|   |   |-- IUnitOfWork.cs                 [Unit of Work pattern interface]
+|   |
+|   |-- Concrete/                          [Repository implementations]
+|       |-- GenericRepository.cs           [Generic CRUD implementation using EF Core]
+|       |-- TripRepository.cs              [Trip-specific queries and operations]
+|       |-- UserProfileRepository.cs       [UserProfile-specific queries and operations]
+|       |-- ChatRepository.cs              [Chat session/message queries and operations]
+|       |-- UnitOfWork.cs                  [Coordinates all repositories and saves changes]
+|
+|-- Migrations/                            [EF Core database migration history]
+    |-- 20260608065951_InitCreate.cs                          [Initial schema creation]
+    |-- 20260608065951_InitCreate.Designer.cs                 [Auto-generated snapshot]
+    |-- 20260608080425_AddRefreshTokens.cs                    [Adds RefreshTokens table]
+    |-- 20260608080425_AddRefreshTokens.Designer.cs           [Auto-generated snapshot]
+    |-- 20260614011156_ChatSessionNullableTripId.cs            [Makes TripId nullable on ChatSession]
+    |-- 20260614011156_ChatSessionNullableTripId.Designer.cs  [Auto-generated snapshot]
+    |-- 20260614015149_MakeTripIdNullable.cs                  [Further nullable TripId changes]
+    |-- 20260614015149_MakeTripIdNullable.Designer.cs         [Auto-generated snapshot]
+    |-- 20260614171722_addstagecolumntochatsession.cs         [Adds Stage column to ChatSession]
+    |-- 20260614171722_addstagecolumntochatsession.Designer.cs[Auto-generated snapshot]
+    |-- ApplicationDbContextModelSnapshot.cs                  [Current full DB model snapshot]
+
+
+================================================================================
+  LAYER 2: SmartTravelPlaners.BLL
+  (Business Logic Layer - services, AI agents, external API integrations)
+================================================================================
+
+SmartTravelPlaners.BLL/
+|
+|-- SmartTravelPlaners.BLL.csproj          [Project file]
+|
+|-- Services/                              [Core application services]
+|   |-- Abstract/                          [Service interfaces]
+|   |   |-- IAuthService.cs                [Authentication service contract]
+|   |   |-- IEmailService.cs               [Email sending service contract]
+|   |
+|   |-- Concrete/                          [Service implementations]
+|       |-- AuthService.cs                 [Handles register, login, JWT, refresh tokens, Google OAuth]
+|       |-- EmailService.cs                [Sends emails via SMTP (Gmail)]
+|       |-- ChatService.cs                 [Manages chat sessions and AI message flow]
+|
+|-- DTOs/                                  [Data Transfer Objects - shapes data between layers]
+|   |-- Auth/
+|   |   |-- RegisterDto.cs                 [Input model for user registration]
+|   |   |-- LoginDto.cs                    [Input model for user login]
+|   |   |-- AuthResponseDto.cs             [Response with JWT token and user info]
+|   |   |-- ConfirmEmailDto.cs             [Input model for email confirmation]
+|   |   |-- ForgotPasswordDto.cs           [Input model for forgot password request]
+|   |   |-- ResetPasswordDto.cs            [Input model for resetting password]
+|   |   |-- UserProfileDto.cs              [User profile data shape]
+|   |   |-- EmailSettingsDto.cs            [Email settings data shape]
+|   |
+|   |-- Chat/
+|       |-- TripCreateDto.cs               [Input model for creating a new trip via chat]
+|
+|-- AI/                                    [AI agent layer using Microsoft Semantic Kernel]
+|   |-- Agents/
+|       |-- WeatherAgent/
+|           |-- Plugins/
+|           |   |-- WeatherPlugin.cs       [Semantic Kernel plugin that exposes weather functions to AI]
+|           |
+|           |-- Services/
+|               |-- WeatherAgentService.cs [Orchestrates the AI weather agent using SK kernel]
+|
+|-- ExternalApis/                          [Third-party API integrations]
+|   |
+|   |-- FlightAPI/                         [Flight data integration]
+|   |   |-- DTOs/
+|   |   |   |-- FlightDto.cs.cs            [Flight result data shape]
+|   |   |   |-- FlightSearchRequest.cs     [Flight search request parameters]
+|   |   |-- Interfaces/
+|   |   |   |-- IFlightService.cs          [Flight service contract]
+|   |   |-- Plugins/
+|   |   |   |-- FlightPlugin.cs            [Semantic Kernel plugin for flight search]
+|   |   |-- Services/
+|   |       |-- FlightService.cs           [Calls flight API and maps results]
+|   |
+|   |-- FourSquare/                        [Foursquare Places API integration]
+|   |   |-- DTOs/
+|   |   |   |-- NearbyPlaceDto.cs          [DTO for nearby place result]
+|   |   |   |-- PlaceDetailsDto.cs         [DTO for detailed place info]
+|   |   |   |-- PlaceDtos.cs               [General place DTOs]
+|   |   |   |-- PlacePhotoDto.cs           [DTO for place photo]
+|   |   |-- Interfaces/
+|   |   |   |-- IPlacesApiService.cs       [Places API service contract]
+|   |   |-- Mappers/
+|   |   |   |-- PlaceMapper.cs             [Maps Foursquare API responses to DTOs]
+|   |   |-- Models/
+|   |   |   |-- FoursquarePlaceDetailsResponse.cs  [Raw Foursquare place details response model]
+|   |   |   |-- NearbyPlacesModels.cs              [Raw Foursquare nearby places response model]
+|   |   |   |-- PlacesPhotosModels.cs              [Raw Foursquare photos response model]
+|   |   |   |-- PlacesSearchModels.cs              [Raw Foursquare search response model]
+|   |   |-- Services/
+|   |       |-- PlacesApiService.cs        [Calls Foursquare + Serper APIs, returns place results]
+|   |
+|   |-- HotelsAPI/                         [Hotel data integration]
+|   |   |-- DTOs/
+|   |   |   |-- GoogleHotelDto.cs          [DTO for hotel search result]
+|   |   |   |-- HotelLocation.cs           [Hotel location data shape]
+|   |   |   |-- HotelPrice.cs              [Hotel price data shape]
+|   |   |   |-- HotelRating.cs             [Hotel rating data shape]
+|   |   |   |-- StayApiSearchResponse.cs   [Raw StayAPI search response wrapper]
+|   |   |-- Interfaces/
+|   |   |   |-- IHotelApiService.cs        [Hotel API service contract]
+|   |   |-- Services/
+|   |   |   |-- HotelApiService.cs         [Calls StayAPI and returns hotel results]
+|   |   |-- Settings/
+|   |       |-- HotelApiSettings.cs        [Base URL and API key configuration model]
+|   |
+|   |-- WeatherAPI/                        [Weather data integration (Visual Crossing)]
+|   |   |-- DTOs/
+|   |   |   |-- VisualCrossingResponseDto.cs   [Top-level weather API response DTO]
+|   |   |   |-- VisualCrossingDayItem.cs       [Single day weather data shape]
+|   |   |-- Interfaces/
+|   |   |   |-- IWeatherApiService.cs      [Weather API service contract]
+|   |   |-- Services/
+|   |   |   |-- WeatherApiService.cs       [Calls Visual Crossing API and returns forecast]
+|   |   |-- Settings/
+|   |       |-- WeatherApiSettings.cs      [Base URL and API key configuration model]
+|   |
+|   |-- Settings/                          [Shared settings for external services]
+|       |-- Places/
+|           |-- FoursquareSettings.cs      [Foursquare API key, base URL, version config]
+|           |-- SerperSettings.cs          [Serper (Google Search) API key and base URL config]
+
+
+================================================================================
+  LAYER 3: SmartTravelPlaners.PL
+  (Presentation Layer - API entry point, controllers, HTTP configuration)
+================================================================================
+
+SmartTravelPlaners.PL/
+|
+|-- SmartTravelPlaners.PL.csproj           [Project file]
+|-- SmartTravelPlaners.PL.csproj.user      [User-specific VS settings]
+|-- SmartTravelPlaners.PL.http             [HTTP request samples for testing endpoints]
+|-- Program.cs                             [App entry point - registers all services, middleware, DI]
+|-- appsettings.json                       [Main configuration file (DB, JWT, Email, API keys)]
+|-- appsettings.Development.json           [Development environment overrides]
+|
+|-- Properties/
+|   |-- launchSettings.json                [Dev server launch profiles (ports, env vars)]
+|
+|-- Controllers/                           [API endpoint controllers]
+|   |-- AuthController.cs                  [Handles register, login, confirm email, password reset]
+|   |-- ChatController.cs                  [Handles AI chat sessions and messages]
+|   |-- FlightController.cs                [Handles flight search requests]
+|   |-- HotelsController.cs                [Handles hotel search requests]
+|   |-- PlacesController.cs                [Handles nearby places and place details requests]
+|   |-- WeatherController.cs               [Handles weather forecast requests]
+|
+|-- UriBuilder/                            [URI construction utilities]
+    |-- Services/
+        |-- AddScoped.cs                   [Helper / extension method for registering URI services]
+
+
+================================================================================
+  ARCHITECTURE SUMMARY
+================================================================================
+
+  PL (Presentation)
+   |  Controllers expose REST API endpoints
+   |  Program.cs wires up all dependencies
+   |
+   v
+  BLL (Business Logic)
+   |  Services contain the core logic (Auth, Chat, Email)
+   |  DTOs define data shapes for API input/output
+   |  AI/ contains Semantic Kernel agents and plugins
+   |  ExternalApis/ wraps 3rd-party HTTP integrations:
+   |     - Foursquare (Places)
+   |     - Serper     (Google Search)
+   |     - StayAPI    (Hotels)
+   |     - Flight API (Flights)
+   |     - Visual Crossing (Weather)
+   |
+   v
+  DAL (Data Access)
+     Entities map to SQL Server tables
+     Repositories handle CRUD via EF Core
+     UnitOfWork coordinates transactions
+     Migrations version-control the DB schema
+
+================================================================================
+  KEY TECHNOLOGIES
+================================================================================
+
+  - ASP.NET Core Web API        : HTTP server and REST API framework
+  - Entity Framework Core       : ORM for SQL Server database
+  - ASP.NET Core Identity       : User management and authentication
+  - JWT Bearer Tokens           : Stateless API authentication
+  - Google OAuth 2.0            : Social login via Google
+  - Microsoft Semantic Kernel   : AI orchestration framework
+  - OpenAI GPT-4o-mini          : Language model for AI chat and agents
+  - Foursquare Places API       : Place/POI search
+  - Serper API                  : Google Search integration
+  - StayAPI                     : Hotel search
+  - Visual Crossing Weather API : Weather forecasts
+  - SMTP (Gmail)                : Email sending
+
+================================================================================

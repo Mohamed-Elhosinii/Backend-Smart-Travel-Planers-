@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
-using SmartTravelPlaners.BLL.ExternalApis.DTOs;
-using SmartTravelPlaners.BLL.ExternalApis.Interfaces;
+using SmartTravelPlaners.BLL.Features.Flight.DTOs;
+using SmartTravelPlaners.BLL.Features.Flight.Interfaces;
 
 namespace SmartTravelPlaners.PL.Controllers
 {
@@ -15,9 +15,9 @@ namespace SmartTravelPlaners.PL.Controllers
             _flightService = flightService;
         }
 
-        /// <summary>
+
         /// Search for one-way or round-trip flights
-        /// </summary>
+
         [HttpGet("search")]
         public async Task<IActionResult> SearchFlights(
             [FromQuery] string departure = "CAI",

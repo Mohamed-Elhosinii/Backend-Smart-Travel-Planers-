@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SmartTravelPlaners.DAL.Context;
 
@@ -11,9 +12,11 @@ using SmartTravelPlaners.DAL.Context;
 namespace SmartTravelPlaners.DAL.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260614015149_MakeTripIdNullable")]
+    partial class MakeTripIdNullable
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -326,7 +329,7 @@ namespace SmartTravelPlaners.DAL.Migrations
                     b.Property<int>("Stage")
                         .HasColumnType("int");
 
-                    b.Property<Guid?>("TripId")
+                    b.Property<Guid>("TripId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime>("UpdatedAt")
@@ -339,8 +342,7 @@ namespace SmartTravelPlaners.DAL.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("TripId")
-                        .IsUnique()
-                        .HasFilter("[TripId] IS NOT NULL");
+                        .IsUnique();
 
                     b.HasIndex("UserId");
 
@@ -757,7 +759,8 @@ namespace SmartTravelPlaners.DAL.Migrations
                     b.HasOne("SmartTravelPlaners.DAL.Entities.Trip", "Trip")
                         .WithOne("ChatSession")
                         .HasForeignKey("SmartTravelPlaners.DAL.Entities.ChatSession", "TripId")
-                        .OnDelete(DeleteBehavior.NoAction);
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
 
                     b.HasOne("SmartTravelPlaners.DAL.Entities.ApplicationUser", "User")
                         .WithMany("ChatSessions")

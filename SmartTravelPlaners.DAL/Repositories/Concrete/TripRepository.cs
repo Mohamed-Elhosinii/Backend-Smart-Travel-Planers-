@@ -19,6 +19,7 @@ namespace SmartTravelPlaners.DAL.Repositories.Concrete
                 .Include(t => t.Days)
                     .ThenInclude(d => d.Activities)
                 .Include(t => t.Hotels)
+                 .Include(t => t.Flights)
                 .FirstOrDefaultAsync(t => t.Id == tripId);
         }
     }

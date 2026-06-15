@@ -1,6 +1,6 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using SmartTravelPlaners.BLL.ExternalApis.FourSquare.Interfaces;
+using SmartTravelPlaners.BLL.Features.Place.Interfaces;
 
 namespace SmartTravelPlaners.PL.Controllers
 {
