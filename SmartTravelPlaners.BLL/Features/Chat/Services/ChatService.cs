@@ -23,7 +23,7 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
             IChatRepository chatRepo,
             ITripRepository tripRepo,
             IUserProfileRepository userProfileRepo,
-             ITripOrchestratorService orchestrator,
+            ITripOrchestratorService orchestrator,
             Kernel kernel)
         {
             _chatRepo = chatRepo;
@@ -85,14 +85,12 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
             var result = await _ai.GetChatMessageContentAsync(history);
             var rawReply = result.Content ?? "Sorry, unable to respond right now";
 
-
             string finalReply;
             TripPlanDto? plan = null;
 
             if (rawReply.TrimStart().StartsWith("TRIP_READY:"))
             {
                 var json = rawReply.Trim().Replace("TRIP_READY:", "").Trim();
-
 
                 var trip = await CreateTripFromJsonAsync(json, session.UserId);
                 Console.WriteLine($"Session Id = {session.Id}");
@@ -138,19 +136,16 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
             session.UpdatedAt = DateTime.UtcNow;
             await _chatRepo.SaveChangesAsync();
 
-            return new ChatReplyDto       
+            return new ChatReplyDto
             {
                 Message = finalReply,
                 Plan = plan
             };
         }
 
+        // Always creates a new session — never returns an existing one
         public async Task<ChatSession> CreateSessionAsync(string userId)
         {
-            var existing = await _chatRepo.GetSessionByUserAsync(userId);
-            if (existing != null)
-                return existing;
-
             var session = await _chatRepo.CreateSessionAsync(userId);
             await _chatRepo.SaveChangesAsync();
             return session;
@@ -169,7 +164,7 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
         {
             var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
             var data = JsonSerializer.Deserialize<TripCreateDto>(json, options)
-                       ?? throw new Exception("Failed to parse trip data from AI");
+                          ?? throw new Exception("Failed to parse trip data from AI");
 
             var profiles = await _userProfileRepo.FindAsync(p => p.AspNetUserId == userId);
             var userProfile = profiles.FirstOrDefault()
