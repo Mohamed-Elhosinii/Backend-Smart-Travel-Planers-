@@ -54,6 +54,14 @@ namespace SmartTravelPlaners.BLL.Services.Concrete
             var result = await _userManager.CreateAsync(user, dto.Password);
             if (!result.Succeeded)
                 throw new Exception(string.Join(", ", result.Errors.Select(e => e.Description)));
+            _context.UserProfiles.Add(new UserProfile
+            {
+                Id = Guid.NewGuid(),
+                AspNetUserId = user.Id,
+                CreatedAt = DateTime.UtcNow
+            });
+
+            await _context.SaveChangesAsync();
 
             await SendConfirmEmailAsync(user.Id);
 

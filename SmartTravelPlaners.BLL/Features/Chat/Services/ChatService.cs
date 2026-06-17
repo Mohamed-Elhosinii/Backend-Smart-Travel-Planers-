@@ -7,7 +7,9 @@ using SmartTravelPlaners.BLL.Features.Orchestrator.Interfaces;
 using SmartTravelPlaners.DAL.Entities;
 using SmartTravelPlaners.DAL.Enums;
 using SmartTravelPlaners.DAL.Repositories.Abstract;
+using SmartTravelPlaners.DAL.Repositories.Concrete;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace SmartTravelPlaners.BLL.Features.Chat.Services
 {
@@ -16,6 +18,7 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
         private readonly IChatRepository _chatRepo;
         private readonly ITripRepository _tripRepo;
         private readonly IUserProfileRepository _userProfileRepo;
+        private readonly IUnitOfWork _unitOfWork;
         private readonly IChatCompletionService _ai;
         private readonly ITripOrchestratorService _orchestrator;
 
@@ -23,12 +26,14 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
             IChatRepository chatRepo,
             ITripRepository tripRepo,
             IUserProfileRepository userProfileRepo,
+            IUnitOfWork unitOfWork,
             ITripOrchestratorService orchestrator,
             Kernel kernel)
         {
             _chatRepo = chatRepo;
             _tripRepo = tripRepo;
             _userProfileRepo = userProfileRepo;
+            _unitOfWork = unitOfWork;
             _ai = kernel.GetRequiredService<IChatCompletionService>();
             _orchestrator = orchestrator;
         }
@@ -40,28 +45,29 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
                 throw new Exception("Session not found");
 
             var history = new ChatHistory();
-            history.AddSystemMessage(@"
-                You are a smart travel assistant called TravelBot.
-                Talk to the user in Arabic only, in a friendly and natural way.
 
-                Your job:
-                1. Collect all of the following from the user naturally through conversation:
-                   - Destination (destination)
-                   - Travel and return dates (startDate, endDate) in yyyy-MM-dd format
-                   - Number of travelers (numTravelers)
-                   - Total budget in USD (budgetTotal)
-                   - Departure city (originCity)
-                   - Interests e.g. nature, history, food (preferences)
+            history.AddSystemMessage(@" You are a smart travel assistant called TravelBot.
+Talk to the user in Arabic only, in a friendly and natural way. 
+Your job is to collect travel information from the user.
 
-                2. Once you have ALL the information, reply with ONLY this line and nothing else:
-                TRIP_READY:{""destination"":""..."",""originCity"":""..."",""startDate"":""..."",""endDate"":""..."",""numTravelers"":1,""budgetTotal"":1000,""preferences"":[""...""]}
+When ALL required fields are collected, respond ONLY with:
 
-                3. If the user wants to change something after the trip is created, reply with ONLY:
-                TRIP_UPDATE:{""field"":""..."",""value"":""...""}
+TRIP_READY:{
+  ""destination"": """",
+  ""originCity"": """",
+  ""startDate"": ""yyyy-MM-dd"",
+  ""endDate"": ""yyyy-MM-dd"",
+  ""numTravelers"": 1,
+  ""budgetTotal"": 1000,
+  ""preferences"": []
+}
 
-                Never include any extra text when sending TRIP_READY or TRIP_UPDATE.
-                Always ask about missing info naturally before sending TRIP_READY.
-            ");
+Rules:
+- Always output ONLY this format when ready.
+- Do NOT output any other text.
+- Destination MUST be in English city name only (e.g., Paris, Dubai, Cairo).
+- If information is missing, continue asking naturally in Arabic.
+- Do NOT use multiple formats. ");
 
             foreach (var msg in session.Messages.OrderBy(m => m.CreatedAt))
             {
@@ -88,35 +94,67 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
             string finalReply;
             TripPlanDto? plan = null;
 
-            if (rawReply.TrimStart().StartsWith("TRIP_READY:"))
+            // =========================
+            // CREATE TRIP FLOW
+            // =========================
+            if (rawReply.StartsWith("TRIP_READY:"))
             {
-                var json = rawReply.Trim().Replace("TRIP_READY:", "").Trim();
+                var json = rawReply.Substring("TRIP_READY:".Length).Trim();
 
                 var trip = await CreateTripFromJsonAsync(json, session.UserId);
-                Console.WriteLine($"Session Id = {session.Id}");
-                Console.WriteLine($"UserId = {session.UserId}");
+
+                if (trip == null)
+                {
+                    return new ChatReplyDto
+                    {
+                        Message = "حصل مشكلة في إنشاء الرحلة، ممكن نجرب تاني؟"
+                    };
+                }
 
                 session.TripId = trip.Id;
                 session.Stage = ChatStage.PlanReady;
 
+                await _chatRepo.SaveChangesAsync();
+
+                // =========================
+                // SAFE ORCHESTRATOR CALL
+                // =========================
                 try
                 {
                     plan = await _orchestrator.BuildTripPlanAsync(trip.Id);
-                    finalReply = $"تم إنشاء خطة رحلتك إلى {trip.Destination}! " +
-                                 $"من {trip.StartDate} إلى {trip.EndDate}. " +
-                                 $"{plan.Summary} " +
-                                 "تقدر تعدل أي حاجة فيها وقولّي.";
                 }
                 catch (Exception ex)
                 {
-                    finalReply = $"تم إنشاء الرحلة، بس حصل خطأ في بناء الخطة: {ex.Message}";
+                    plan = null;
+                    Console.WriteLine($"Orchestrator failed: {ex.Message}");
                 }
+
+                finalReply = $"تم إنشاء رحلتك إلى {trip.Destination}! " +
+                             $"من {trip.StartDate} إلى {trip.EndDate}. ";
+
+                if (plan != null)
+                    finalReply += plan.Summary;
+                else
+                    finalReply += "لكن بعض تفاصيل الرحلة (مثل الطيران) غير متاحة حاليًا.";
+
             }
             else if (rawReply.TrimStart().StartsWith("TRIP_UPDATE:"))
             {
-                var json = rawReply.Trim().Replace("TRIP_UPDATE:", "").Trim();
+                if (session.TripId == null)
+                {
+                    return new ChatReplyDto
+                    {
+                        Message = "مفيش رحلة موجودة عشان تتعدل. نبدأ نعمل رحلة جديدة؟",
+                        Plan = null
+                    };
+                }
+
+                var json = rawReply.Replace("TRIP_UPDATE:", "").Trim();
+
                 await UpdateTripFieldAsync(json, session.TripId);
+
                 session.Stage = ChatStage.Modifying;
+
                 finalReply = "تم تحديث الرحلة بنجاح!";
             }
             else
@@ -143,32 +181,32 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
             };
         }
 
-        // Always creates a new session — never returns an existing one
-        public async Task<ChatSession> CreateSessionAsync(string userId)
-        {
-            var session = await _chatRepo.CreateSessionAsync(userId);
-            await _chatRepo.SaveChangesAsync();
-            return session;
-        }
-
-        public async Task<List<ChatMessage>> GetHistoryAsync(Guid sessionId)
-        {
-            return await _chatRepo.GetMessagesAsync(sessionId);
-        }
-
-        // -------------------------------------------------------
-        // Private Helpers
-        // -------------------------------------------------------
-
+        // =========================
+        // CREATE TRIP (unchanged)
+        // =========================
         private async Task<Trip> CreateTripFromJsonAsync(string json, string userId)
         {
             var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
             var data = JsonSerializer.Deserialize<TripCreateDto>(json, options)
                           ?? throw new Exception("Failed to parse trip data from AI");
 
             var profiles = await _userProfileRepo.FindAsync(p => p.AspNetUserId == userId);
+
             var userProfile = profiles.FirstOrDefault()
                               ?? throw new Exception("User profile not found");
+
+            if (!DateOnly.TryParse(data.StartDate, out var startDate))
+                throw new Exception("Invalid start date");
+
+            if (!DateOnly.TryParse(data.EndDate, out var endDate))
+                throw new Exception("Invalid end date");
+
+            if (!int.TryParse(data.NumTravelers.ToString(), out var travelers))
+                throw new Exception("Invalid travelers count");
+
+            if (!decimal.TryParse(data.BudgetTotal.ToString(), out var budget))
+                throw new Exception("Invalid budget");
 
             var trip = new Trip
             {
@@ -177,10 +215,10 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
                 Title = $"Trip to {data.Destination}",
                 Destination = data.Destination,
                 OriginCity = data.OriginCity,
-                StartDate = DateOnly.Parse(data.StartDate),
-                EndDate = DateOnly.Parse(data.EndDate),
-                NumTravelers = data.NumTravelers,
-                BudgetTotal = data.BudgetTotal,
+                StartDate = startDate,
+                EndDate = endDate,
+                NumTravelers = travelers,
+                BudgetTotal = budget,
                 Status = TripStatus.Draft,
                 CreatedAt = DateTime.UtcNow,
                 Preferences = data.Preferences.Select(p => new TripPreference
@@ -191,10 +229,15 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
                 }).ToList()
             };
 
-            await _tripRepo.AddAsync(trip);
+            await _unitOfWork.Trips.AddAsync(trip);
+            await _unitOfWork.CompleteAsync();
+
             return trip;
         }
 
+        // =========================
+        // UPDATE TRIP (unchanged)
+        // =========================
         private async Task UpdateTripFieldAsync(string json, Guid? tripId)
         {
             if (tripId == null) return;
@@ -233,6 +276,18 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
             }
 
             _tripRepo.Update(trip);
+        }
+
+        public async Task<ChatSession> CreateSessionAsync(string userId)
+        {
+            var session = await _chatRepo.CreateSessionAsync(userId);
+            await _chatRepo.SaveChangesAsync();
+            return session;
+        }
+
+        public async Task<List<ChatMessage>> GetHistoryAsync(Guid sessionId)
+        {
+            return await _chatRepo.GetMessagesAsync(sessionId);
         }
     }
 }
