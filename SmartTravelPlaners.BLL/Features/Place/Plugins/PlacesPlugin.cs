@@ -47,9 +47,12 @@ using System.Text;
 
                     return new PlaceDto
                     {
+                        FsqPlaceId = place.FsqPlaceId,  // ← أضف ده
                         Name = place.Name,
                         Address = place.Address,
                         Category = place.Category,
+                        Latitude = place.Latitude,       // ← أضف ده
+                        Longitude = place.Longitude,     // ← أضف ده
                         Images = images
                     };
                 });

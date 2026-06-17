@@ -30,6 +30,7 @@ namespace SmartTravelPlaners.BLL.Features.Flight.Services
             { "AUH", "OMAA" },
             { "AMM", "OJAI" },
             { "BEY", "OLBA" },
+           
         };
 
         public FlightService(HttpClient httpClient)

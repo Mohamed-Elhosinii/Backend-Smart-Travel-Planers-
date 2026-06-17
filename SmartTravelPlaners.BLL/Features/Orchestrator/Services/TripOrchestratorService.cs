@@ -50,6 +50,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
             var hasOrigin = !string.IsNullOrWhiteSpace(trip.OriginCity);
 
             decimal hotelBudget, activitiesBudget, flightBudget = 0;
+
             if (hasOrigin)
             {
                 hotelBudget = BudgetAllocator.HotelBudget(trip.BudgetTotal);
@@ -65,10 +66,20 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
 
             var hotelDto = await SelectHotelAsync(trip, checkIn, checkOut, hotelBudget, numberOfNights);
 
+
             FlightDto? flightDto = null;
+
             if (hasOrigin)
             {
-                flightDto = await SelectFlightAsync(trip, checkIn);
+                try
+                {
+                    flightDto = await SelectFlightAsync(trip, checkIn);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Flight failed but ignored: {ex.Message}");
+                    flightDto = null;
+                }
             }
 
             var dayPlans = await BuildDayPlansAsync(trip, numberOfDays, activitiesBudget);
@@ -131,16 +142,23 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
 
         private async Task<FlightDto?> SelectFlightAsync(Trip trip, string departureDate)
         {
-            // Use city names directly — FlightPlugin resolves them via AirLabs API
-            var json = await _flightPlugin.SearchFlightsAsync(
-                departureCity: trip.OriginCity!,
-                arrivalCity: trip.Destination,
-                departureDate: departureDate,
-                tripType: "OneWay");
+            try
+            {
+                var json = await _flightPlugin.SearchFlightsAsync(
+                    departureCity: trip.OriginCity ?? "",
+                    arrivalCity: trip.Destination,
+                    departureDate: departureDate,
+                    tripType: "OneWay");
 
-            var result = TryDeserialize<FlightSearchResult>(json);
+                var result = TryDeserialize<FlightSearchResult>(json);
 
-            return result?.OutboundFlights.FirstOrDefault();
+                return result?.OutboundFlights.FirstOrDefault();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"SelectFlightAsync failed: {ex.Message}");
+                return null;
+            }
         }
 
         private async Task<List<DayPlanDto>> BuildDayPlansAsync(
@@ -195,7 +213,9 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
             string type,
             decimal estimatedCost)
         {
-            var place = pool.FirstOrDefault(p => !usedPlaceIds.Contains(p.FsqPlaceId));
+            var place = pool
+     .OrderBy(x => Guid.NewGuid())
+     .FirstOrDefault();
             if (place is null) return;
 
             usedPlaceIds.Add(place.FsqPlaceId);
@@ -205,6 +225,8 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 Name = place.Name,
                 Type = type,
                 LocationName = place.Address,
+                Lat = place.Latitude,
+                Lng = place.Longitude,
                 TimeSlot = timeSlot,
                 EstimatedCost = estimatedCost,
                 PlaceId = place.FsqPlaceId
@@ -233,6 +255,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                     Stars = (int)Math.Round(hotel.Rating.Value ?? 0),
                     Status = BookingStatus.Suggested
                 };
+
                 await _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Hotel>().AddAsync(hotelEntity);
             }
 
@@ -251,6 +274,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                     Price = 0,
                     Status = BookingStatus.Suggested
                 };
+
                 await _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Flight>().AddAsync(flightEntity);
             }
 
@@ -319,7 +343,9 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
         }
 
         private static ActivityType ParseActivityType(string type)
-            => Enum.TryParse<ActivityType>(type, ignoreCase: true, out var result) ? result : ActivityType.Other;
+            => Enum.TryParse<ActivityType>(type, ignoreCase: true, out var result)
+                ? result
+                : ActivityType.Other;
 
         private static DateTime ParseDateTime(string value)
             => DateTime.TryParse(value, out var dt) ? dt : DateTime.UtcNow;
