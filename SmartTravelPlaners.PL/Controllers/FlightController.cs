@@ -15,13 +15,11 @@ namespace SmartTravelPlaners.PL.Controllers
             _flightService = flightService;
         }
 
-
-        /// Search for one-way or round-trip flights
-
+        // Search for one-way or round-trip flights by city name
         [HttpGet("search")]
         public async Task<IActionResult> SearchFlights(
-            [FromQuery] string departure = "CAI",
-            [FromQuery] string arrival = "DXB",
+            [FromQuery] string departure = "Cairo",
+            [FromQuery] string arrival = "Dubai",
             [FromQuery] string departureDate = "2026-06-20",
             [FromQuery] TripType tripType = TripType.OneWay,
             [FromQuery] string? returnDate = null)
@@ -33,8 +31,8 @@ namespace SmartTravelPlaners.PL.Controllers
 
                 var request = new FlightSearchRequest
                 {
-                    DepartureAirport = departure.ToUpper(),
-                    ArrivalAirport = arrival.ToUpper(),
+                    DepartureCity = departure,
+                    ArrivalCity = arrival,
                     DepartureDate = departureDate,
                     TripType = tripType,
                     ReturnDate = returnDate
@@ -46,6 +44,8 @@ namespace SmartTravelPlaners.PL.Controllers
                 {
                     tripType = tripType.ToString(),
                     isRoundTrip = result.IsRoundTrip,
+                    departureIata = result.DepartureIata,
+                    arrivalIata = result.ArrivalIata,
                     outboundCount = result.OutboundFlights.Count,
                     returnCount = result.ReturnFlights?.Count ?? 0,
                     outboundFlights = result.OutboundFlights,

@@ -1,5 +1,4 @@
 using System.Text.Json;
-using Microsoft.Extensions.Options;
 using SmartTravelPlaners.BLL.Features.Flight.DTOs;
 using SmartTravelPlaners.BLL.Features.Flight.Interfaces;
 
@@ -8,7 +7,12 @@ namespace SmartTravelPlaners.BLL.Features.Flight.Services
     public class FlightService : IFlightService
     {
         private readonly HttpClient _httpClient;
-        private readonly string _apiKey = "c91dbf09d0msh0fcf2521d3dc089p13afb5jsn5bc15c3837fd";
+
+        // AeroDataBox API credentials
+        private readonly string _aeroApiKey = "c91dbf09d0msh0fcf2521d3dc089p13afb5jsn5bc15c3837fd";
+
+        // AirLabs API credentials
+        private readonly string _airlabsApiKey = "fbc05fb5-6fbb-4cb7-b06f-c0fe2a09c362";
 
         // IATA to ICAO airport code mapping
         private static readonly Dictionary<string, string> IataToIcao =
@@ -33,14 +37,52 @@ namespace SmartTravelPlaners.BLL.Features.Flight.Services
             _httpClient = httpClient;
         }
 
+        // ============================================================
+        // Resolve city name to IATA code using AirLabs Suggest API
+        // ============================================================
+        public async Task<string> GetIataCodeAsync(string cityName)
+        {
+            var url = $"https://airlabs.co/api/v9/suggest?query={Uri.EscapeDataString(cityName)}&api_key={_airlabsApiKey}";
+
+            var response = await _httpClient.GetAsync(url);
+            var content = await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+                throw new Exception($"AirLabs API Error ({response.StatusCode}): {content}");
+
+            var json = JsonDocument.Parse(content);
+
+            // Get airports array from response
+            if (!json.RootElement.TryGetProperty("response", out var responseNode) ||
+                !responseNode.TryGetProperty("airports", out var airports))
+                throw new Exception($"No airports found for: {cityName}");
+
+            // Get the most popular airport (first result sorted by popularity)
+            foreach (var airport in airports.EnumerateArray())
+            {
+                if (airport.TryGetProperty("iata_code", out var iataNode) &&
+                    iataNode.ValueKind != JsonValueKind.Null)
+                {
+                    var iata = iataNode.GetString();
+                    if (!string.IsNullOrWhiteSpace(iata))
+                        return iata.ToUpper();
+                }
+            }
+
+            throw new Exception($"No IATA code found for: {cityName}");
+        }
+
+        // ============================================================
+        // Search flights - accepts city names and resolves to IATA
+        // ============================================================
         public async Task<FlightSearchResult> SearchFlightsAsync(FlightSearchRequest request)
         {
+            // Resolve city names to IATA codes
+            var departureIata = await GetIataCodeAsync(request.DepartureCity);
+            var arrivalIata = await GetIataCodeAsync(request.ArrivalCity);
+
             // Always fetch outbound flights
-            var outbound = await GetFlightsAsync(
-                request.DepartureAirport,
-                request.ArrivalAirport,
-                request.DepartureDate
-            );
+            var outbound = await GetFlightsAsync(departureIata, arrivalIata, request.DepartureDate);
 
             // Fetch return flights only if RoundTrip
             List<FlightDto>? returnFlights = null;
@@ -50,21 +92,21 @@ namespace SmartTravelPlaners.BLL.Features.Flight.Services
                 if (string.IsNullOrWhiteSpace(request.ReturnDate))
                     throw new Exception("ReturnDate is required for RoundTrip");
 
-                returnFlights = await GetFlightsAsync(
-                    request.ArrivalAirport,
-                    request.DepartureAirport,
-                    request.ReturnDate
-                );
+                returnFlights = await GetFlightsAsync(arrivalIata, departureIata, request.ReturnDate);
             }
 
             return new FlightSearchResult
             {
                 OutboundFlights = outbound,
-                ReturnFlights = returnFlights
+                ReturnFlights = returnFlights,
+                DepartureIata = departureIata,
+                ArrivalIata = arrivalIata
             };
         }
 
-        // Fetch flights for a full day by splitting into two 12-hour windows
+        // ============================================================
+        // Fetch flights for a full day (split into two 12-hour windows)
+        // ============================================================
         private async Task<List<FlightDto>> GetFlightsAsync(
             string departureIata,
             string arrivalIata,
@@ -81,7 +123,9 @@ namespace SmartTravelPlaners.BLL.Features.Flight.Services
             return morning.Concat(evening).ToList();
         }
 
-        // Call the AeroDataBox API and filter results by arrival airport
+        // ============================================================
+        // Call AeroDataBox API and filter results by arrival airport
+        // ============================================================
         private async Task<List<FlightDto>> FetchFromApi(
             string icao,
             string arrivalIata,
@@ -99,14 +143,14 @@ namespace SmartTravelPlaners.BLL.Features.Flight.Services
                 "&withPrivate=false";
 
             var requestMsg = new HttpRequestMessage(HttpMethod.Get, url);
-            requestMsg.Headers.Add("x-rapidapi-key", _apiKey);
+            requestMsg.Headers.Add("x-rapidapi-key", _aeroApiKey);
             requestMsg.Headers.Add("x-rapidapi-host", "aerodatabox.p.rapidapi.com");
 
             var response = await _httpClient.SendAsync(requestMsg);
             var content = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
-                throw new Exception($"API Error ({response.StatusCode}): {content}");
+                throw new Exception($"AeroDataBox API Error ({response.StatusCode}): {content}");
 
             var json = JsonDocument.Parse(content);
 
