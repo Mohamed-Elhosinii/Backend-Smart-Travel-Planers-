@@ -160,6 +160,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 return null;
             }
         }
+       
 
         private async Task<List<DayPlanDto>> BuildDayPlansAsync(
             Trip trip, int numberOfDays, decimal activitiesBudget)
@@ -167,10 +168,17 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
             var dailyBudget = numberOfDays > 0 ? activitiesBudget / numberOfDays : 0;
             var usedPlaceIds = new HashSet<string>();
             var days = new List<DayPlanDto>();
+          
 
-            var attractions = await SearchPlaces(trip.Destination, "attraction");
-            var restaurants = await SearchPlaces(trip.Destination, "restaurant");
-            var cafes = await SearchPlaces(trip.Destination, "cafe");
+            var attractionsTask = SearchPlaces(trip.Destination, "attraction");
+            var restaurantsTask = SearchPlaces(trip.Destination, "restaurant");
+            var cafesTask = SearchPlaces(trip.Destination, "cafe");
+
+            await Task.WhenAll(attractionsTask, restaurantsTask, cafesTask);
+
+            var attractions = attractionsTask.Result;
+            var restaurants = restaurantsTask.Result;
+            var cafes = cafesTask.Result;
 
             for (int dayNumber = 1; dayNumber <= numberOfDays; dayNumber++)
             {
@@ -197,7 +205,13 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
         {
             try
             {
-                return await _placesPlugin.SearchWithImages(city, category);
+                var task = _placesPlugin.SearchWithImages(city, category);
+                var result = await Task.WhenAny(task, Task.Delay(5000));
+
+                if (result != task)
+                    return new List<PlaceDto>(); 
+
+                return await task;
             }
             catch
             {
@@ -206,16 +220,21 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
         }
 
         private static void AddActivityIfAvailable(
-            List<ActivityPlanDto> activities,
-            List<PlaceDto> pool,
-            HashSet<string> usedPlaceIds,
-            string timeSlot,
-            string type,
-            decimal estimatedCost)
+      List<ActivityPlanDto> activities,
+      List<PlaceDto> pool,
+      HashSet<string> usedPlaceIds,
+      string timeSlot,
+      string type,
+      decimal estimatedCost)
         {
-            var place = pool
-     .OrderBy(x => Guid.NewGuid())
-     .FirstOrDefault();
+            var available = pool
+                .Where(p => !usedPlaceIds.Contains(p.FsqPlaceId))
+                .ToList();
+
+            var place = available.Count == 0
+                ? null
+                : available[Random.Shared.Next(available.Count)];
+
             if (place is null) return;
 
             usedPlaceIds.Add(place.FsqPlaceId);

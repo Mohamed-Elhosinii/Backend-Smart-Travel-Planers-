@@ -47,12 +47,12 @@ using System.Text;
 
                     return new PlaceDto
                     {
-                        FsqPlaceId = place.FsqPlaceId,  // ← أضف ده
+                        FsqPlaceId = place.FsqPlaceId,  
                         Name = place.Name,
                         Address = place.Address,
                         Category = place.Category,
-                        Latitude = place.Latitude,       // ← أضف ده
-                        Longitude = place.Longitude,     // ← أضف ده
+                        Latitude = place.Latitude,       
+                        Longitude = place.Longitude,     
                         Images = images
                     };
                 });

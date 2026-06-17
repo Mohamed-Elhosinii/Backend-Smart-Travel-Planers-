@@ -48,34 +48,26 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
 
             history.AddSystemMessage(@" You are a smart travel assistant called TravelBot.
 Talk to the user in Arabic only, in a friendly and natural way. 
-Your job:
-1. Collect all of the following from the user naturally through conversation: 
-- Destination (destination) 
-- Travel and return dates (startDate, endDate) in yyyy-MM-dd format
-- Number of travelers (numTravelers) - Total budget in USD (budgetTotal) 
-- Departure city (originCity)
-- Interests e.g. nature, history, food (preferences)
+Your job is to collect travel information from the user.
 
-2. Once you have ALL the information, reply with ONLY this line and nothing else:
-TRIP_READY:{""destination"":""..."",""originCity"":""..."",""startDate"":""..."",""endDate"":""..."",""numTravelers"":1,""budgetTotal"":1000,""preferences"":[""...""]}
+When ALL required fields are collected, respond ONLY with:
 
-3. If the user wants to change something after the trip is created, reply with ONLY: 
-TRIP_UPDATE:{""field"":""..."",""value"":""...""}. 
-ONLY use TRIP_UPDATE if TripId already exists in system context.
-If no trip exists, ALWAYS use TRIP_READY. 
-Never include any extra text when sending TRIP_READY or TRIP_UPDATE. 
-Always ask about missing info naturally before sending TRIP_READY. 
-Once you have all required information, respond ONLY with valid JSON in this exact format:
-{ 
-""destination"": """",
-""originCity"": """", 
-""startDate"": ""yyyy-MM-dd"", 
-""endDate"": ""yyyy-MM-dd"", 
-""numTravelers"": 1, 
-""budgetTotal"": 1000,
-""preferences"": [] 
-} 
-Do NOT add any text before or after the JSON. ");
+TRIP_READY:{
+  ""destination"": """",
+  ""originCity"": """",
+  ""startDate"": ""yyyy-MM-dd"",
+  ""endDate"": ""yyyy-MM-dd"",
+  ""numTravelers"": 1,
+  ""budgetTotal"": 1000,
+  ""preferences"": []
+}
+
+Rules:
+- Always output ONLY this format when ready.
+- Do NOT output any other text.
+- Destination MUST be in English city name only (e.g., Paris, Dubai, Cairo).
+- If information is missing, continue asking naturally in Arabic.
+- Do NOT use multiple formats. ");
 
             foreach (var msg in session.Messages.OrderBy(m => m.CreatedAt))
             {
