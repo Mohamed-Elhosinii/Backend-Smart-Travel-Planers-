@@ -7,6 +7,7 @@ using SmartTravelPlaners.BLL.Features.Orchestrator.Interfaces;
 using SmartTravelPlaners.DAL.Entities;
 using SmartTravelPlaners.DAL.Enums;
 using SmartTravelPlaners.DAL.Repositories.Abstract;
+using SmartTravelPlaners.DAL.Repositories.Concrete;
 using System.Text.Json;
 
 namespace SmartTravelPlaners.BLL.Features.Chat.Services
@@ -16,6 +17,7 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
         private readonly IChatRepository _chatRepo;
         private readonly ITripRepository _tripRepo;
         private readonly IUserProfileRepository _userProfileRepo;
+        private readonly IUnitOfWork _unitOfWork;
         private readonly IChatCompletionService _ai;
         private readonly ITripOrchestratorService _orchestrator;
 
@@ -23,12 +25,14 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
             IChatRepository chatRepo,
             ITripRepository tripRepo,
             IUserProfileRepository userProfileRepo,
+            IUnitOfWork unitOfWork,
              ITripOrchestratorService orchestrator,
             Kernel kernel)
         {
             _chatRepo = chatRepo;
             _tripRepo = tripRepo;
             _userProfileRepo = userProfileRepo;
+            _unitOfWork = unitOfWork;
             _ai = kernel.GetRequiredService<IChatCompletionService>();
             _orchestrator = orchestrator;
         }
@@ -52,12 +56,25 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
                    - Total budget in USD (budgetTotal)
                    - Departure city (originCity)
                    - Interests e.g. nature, history, food (preferences)
+                2.Always convert all cities and locations into IATA airport codes.
 
-                2. Once you have ALL the information, reply with ONLY this line and nothing else:
+                  Examples:
+                  - Cairo → CAI
+                  - Paris → CDG
+                  - London → LHR
+                 Return ONLY standardized codes, never city names.
+                 If you cannot find IATA code, make your best guess based on major international airports.
+                 Never return Arabic or city names.
+
+                3. Once you have ALL the information, reply with ONLY this line and nothing else:
                 TRIP_READY:{""destination"":""..."",""originCity"":""..."",""startDate"":""..."",""endDate"":""..."",""numTravelers"":1,""budgetTotal"":1000,""preferences"":[""...""]}
 
-                3. If the user wants to change something after the trip is created, reply with ONLY:
-                TRIP_UPDATE:{""field"":""..."",""value"":""...""}
+                4. If the user wants to change something after the trip is created, reply with ONLY:
+                TRIP_UPDATE:{""field"":""..."",""value"":""...""}.
+                ONLY use TRIP_UPDATE if TripId already exists in system context.If no trip exists, ALWAYS use TRIP_READY.
+                
+
+                
 
                 Never include any extra text when sending TRIP_READY or TRIP_UPDATE.
                 Always ask about missing info naturally before sending TRIP_READY.
@@ -98,6 +115,7 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
                 Console.WriteLine($"Session Id = {session.Id}");
                 Console.WriteLine($"UserId = {session.UserId}");
 
+
                 session.TripId = trip.Id;
                 session.Stage = ChatStage.PlanReady;
 
@@ -116,9 +134,21 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
             }
             else if (rawReply.TrimStart().StartsWith("TRIP_UPDATE:"))
             {
-                var json = rawReply.Trim().Replace("TRIP_UPDATE:", "").Trim();
+                if (session.TripId == null)
+                {
+                    return new ChatReplyDto
+                    {
+                        Message = "مفيش رحلة موجودة  عشان تتعدل. نبدأ نعمل رحلة جديدة؟",
+                        Plan = null
+                    };
+                }
+
+                var json = rawReply.Replace("TRIP_UPDATE:", "").Trim();
+
                 await UpdateTripFieldAsync(json, session.TripId);
+
                 session.Stage = ChatStage.Modifying;
+
                 finalReply = "تم تحديث الرحلة بنجاح!";
             }
             else
@@ -147,11 +177,13 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
 
         public async Task<ChatSession> CreateSessionAsync(string userId)
         {
-            var existing = await _chatRepo.GetSessionByUserAsync(userId);
-            if (existing != null)
-                return existing;
+            //var existing = await _chatRepo.GetSessionByUserAsync(userId);
+            //if (existing != null)
+            //    return existing;
+         
 
-            var session = await _chatRepo.CreateSessionAsync(userId);
+            var session =  await _chatRepo.CreateSessionAsync(userId);
+
             await _chatRepo.SaveChangesAsync();
             return session;
         }
@@ -165,15 +197,57 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
         // Private Helpers
         // -------------------------------------------------------
 
+        //private async Task<Trip> CreateTripFromJsonAsync(string json, string userId)
+        //{
+
+        //    var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        //    var data = JsonSerializer.Deserialize<TripCreateDto>(json, options)
+        //               ?? throw new Exception("Failed to parse trip data from AI");
+
+        //    var profiles = await _userProfileRepo.FindAsync(p => p.AspNetUserId == userId);
+        //    var userProfile = profiles.FirstOrDefault()
+        //                      ?? throw new Exception("User profile not found");
+
+        //    var trip = new Trip
+        //    {
+        //        Id = Guid.NewGuid(),
+        //        UserId = userProfile.Id,
+        //        Title = $"Trip to {data.Destination}",
+        //        Destination = data.Destination,
+        //        OriginCity = data.OriginCity,
+        //        StartDate = DateOnly.Parse(data.StartDate),
+        //        EndDate = DateOnly.Parse(data.EndDate),
+        //        NumTravelers = data.NumTravelers,
+        //        BudgetTotal = data.BudgetTotal,
+        //        Status = TripStatus.Draft,
+        //        CreatedAt = DateTime.UtcNow,
+        //        Preferences = data.Preferences.Select(p => new TripPreference
+        //        {
+        //            Id = Guid.NewGuid(),
+        //            Category = "General",
+        //            Value = p
+        //        }).ToList()
+        //    };
+
+
+        //    await _unitOfWork.Trips.AddAsync(trip);
+        //    await _unitOfWork.CompleteAsync();
+        //    return trip;
+        //}
         private async Task<Trip> CreateTripFromJsonAsync(string json, string userId)
         {
             var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
             var data = JsonSerializer.Deserialize<TripCreateDto>(json, options)
                        ?? throw new Exception("Failed to parse trip data from AI");
 
             var profiles = await _userProfileRepo.FindAsync(p => p.AspNetUserId == userId);
             var userProfile = profiles.FirstOrDefault()
                               ?? throw new Exception("User profile not found");
+
+            // 🔥 Normalize BEFORE creating Trip
+            data.OriginCity = NormalizeCity(data.OriginCity);
+            data.Destination = NormalizeCity(data.Destination);
 
             var trip = new Trip
             {
@@ -196,10 +270,22 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
                 }).ToList()
             };
 
-            await _tripRepo.AddAsync(trip);
+            await _unitOfWork.Trips.AddAsync(trip);
+            await _unitOfWork.CompleteAsync();
+
             return trip;
         }
-
+        private string NormalizeCity(string city)
+        {
+            return city?.Trim().ToLower() switch
+            {
+                "القاهرة" or "cairo" => "CAI",
+                "paris" => "CDG",
+                "london" => "LHR",
+                "dubai" => "DXB",
+                _ => city
+            };
+        }
         private async Task UpdateTripFieldAsync(string json, Guid? tripId)
         {
             if (tripId == null) return;

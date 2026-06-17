@@ -16,19 +16,18 @@ namespace SmartTravelPlaners.BLL.Features.Flight.Plugins
         }
 
         [KernelFunction("search_flights")]
-        [Description("Search for available flights between two airports on a specific date. Use this when the user asks about flights, travel options, or trip planning.")]
-      
+        [Description("Search for available flights between two cities on a specific date. Use this when the user asks about flights, travel options, or trip planning.")]
         public async Task<string> SearchFlightsAsync(
-            [Description("Departure airport IATA code e.g. CAI for Cairo")] string departure,
-            [Description("Arrival airport IATA code e.g. DXB for Dubai")] string arrival,
+            [Description("Departure city name e.g. Cairo, Dubai, London")] string departureCity,
+            [Description("Arrival city name e.g. Dubai, London, Paris")] string arrivalCity,
             [Description("Departure date in yyyy-MM-dd format")] string departureDate,
             [Description("Trip type: OneWay or RoundTrip")] string tripType = "OneWay",
             [Description("Return date in yyyy-MM-dd format, required only for RoundTrip")] string? returnDate = null)
         {
             var request = new FlightSearchRequest
             {
-                DepartureAirport = departure.ToUpper(),
-                ArrivalAirport = arrival.ToUpper(),
+                DepartureCity = departureCity,
+                ArrivalCity = arrivalCity,
                 DepartureDate = departureDate,
                 TripType = Enum.Parse<TripType>(tripType, ignoreCase: true),
                 ReturnDate = returnDate
@@ -40,6 +39,15 @@ namespace SmartTravelPlaners.BLL.Features.Flight.Plugins
             {
                 WriteIndented = true
             });
+        }
+
+        [KernelFunction("get_airport_code")]
+        [Description("Get the IATA airport code for a city name. Use this to resolve city names to airport codes.")]
+        public async Task<string> GetAirportCodeAsync(
+            [Description("City or airport name e.g. Cairo, Dubai, London")] string cityName)
+        {
+            var iata = await _flightService.GetIataCodeAsync(cityName);
+            return $"The IATA code for {cityName} is {iata}";
         }
     }
 }

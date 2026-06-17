@@ -58,5 +58,6 @@ namespace SmartTravelPlaners.DAL.Repositories.Concrete
         {
             _dbSet.RemoveRange(entities);
         }
+
     }
 }

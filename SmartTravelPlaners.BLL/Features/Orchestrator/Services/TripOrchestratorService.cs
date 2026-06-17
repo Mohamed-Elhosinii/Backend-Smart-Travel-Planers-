@@ -26,10 +26,10 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
         };
 
         public TripOrchestratorService(
-      IUnitOfWork unitOfWork,
-      HotelPlugin hotelPlugin,
-      FlightPlugin flightPlugin,
-      PlacesPlugin placesPlugin)
+            IUnitOfWork unitOfWork,
+            HotelPlugin hotelPlugin,
+            FlightPlugin flightPlugin,
+            PlacesPlugin placesPlugin)
         {
             _unitOfWork = unitOfWork;
             _hotelPlugin = hotelPlugin;
@@ -40,7 +40,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
         public async Task<TripPlanDto> BuildTripPlanAsync(Guid tripId)
         {
             var trip = await _unitOfWork.Trips.GetTripWithDetailsAsync(tripId)
-           ?? throw new Exception($"Trip {tripId} not found");
+                ?? throw new Exception($"Trip {tripId} not found");
 
             var checkIn = trip.StartDate.ToString("yyyy-MM-dd");
             var checkOut = trip.EndDate.ToString("yyyy-MM-dd");
@@ -121,7 +121,8 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
             }
 
             var withinBudget = hotels
-                .Where(h => h.Price.PricePerNight.HasValue && h.Price.PricePerNight.Value <= (double)maxPricePerNight)
+                .Where(h => h.Price.PricePerNight.HasValue &&
+                            h.Price.PricePerNight.Value <= (double)maxPricePerNight)
                 .OrderByDescending(h => h.Rating.Value ?? 0)
                 .FirstOrDefault();
 
@@ -130,9 +131,10 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
 
         private async Task<FlightDto?> SelectFlightAsync(Trip trip, string departureDate)
         {
+            // Use city names directly — FlightPlugin resolves them via AirLabs API
             var json = await _flightPlugin.SearchFlightsAsync(
-                departure: trip.OriginCity!,
-                arrival: trip.Destination,
+                departureCity: trip.OriginCity!,
+                arrivalCity: trip.Destination,
                 departureDate: departureDate,
                 tripType: "OneWay");
 
@@ -141,10 +143,10 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
             return result?.OutboundFlights.FirstOrDefault();
         }
 
-        private async Task<List<DayPlanDto>> BuildDayPlansAsync(Trip trip, int numberOfDays, decimal activitiesBudget)
+        private async Task<List<DayPlanDto>> BuildDayPlansAsync(
+            Trip trip, int numberOfDays, decimal activitiesBudget)
         {
             var dailyBudget = numberOfDays > 0 ? activitiesBudget / numberOfDays : 0;
-
             var usedPlaceIds = new HashSet<string>();
             var days = new List<DayPlanDto>();
 
@@ -210,10 +212,10 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
         }
 
         private async Task PersistPlanAsync(
-    Trip trip,
-    GoogleHotelDto? hotel,
-    FlightDto? flight,
-    List<DayPlanDto> dayPlans)
+            Trip trip,
+            GoogleHotelDto? hotel,
+            FlightDto? flight,
+            List<DayPlanDto> dayPlans)
         {
             if (hotel is not null)
             {
@@ -231,7 +233,6 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                     Stars = (int)Math.Round(hotel.Rating.Value ?? 0),
                     Status = BookingStatus.Suggested
                 };
-                // ✅ أضف مباشرة للـ DbContext مش للـ trip
                 await _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Hotel>().AddAsync(hotelEntity);
             }
 
@@ -285,10 +286,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 await _unitOfWork.Repository<TripDay>().AddAsync(tripDay);
             }
 
-          
             trip.Status = TripStatus.Confirmed;
-            // EF شايفها tracked من الـ Include، هيعمل UPDATE على الـ Status بس
-
             await _unitOfWork.CompleteAsync();
         }
 
@@ -328,14 +326,8 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
 
         private static T? TryDeserialize<T>(string json)
         {
-            try
-            {
-                return JsonSerializer.Deserialize<T>(json, JsonOptions);
-            }
-            catch
-            {
-                return default;
-            }
+            try { return JsonSerializer.Deserialize<T>(json, JsonOptions); }
+            catch { return default; }
         }
     }
 }
