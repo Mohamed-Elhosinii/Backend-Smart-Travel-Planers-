@@ -1,9 +1,10 @@
-﻿using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using SmartTravelPlaners.BLL.DTOs.Auth;
+using SmartTravelPlaners.BLL.Features.Subscription.Interfaces;
 using SmartTravelPlaners.BLL.Services.Abstract;
 using SmartTravelPlaners.DAL.Context;
 using SmartTravelPlaners.DAL.Entities;
@@ -23,16 +24,19 @@ namespace SmartTravelPlaners.BLL.Services.Concrete
         private readonly IConfiguration _configuration;
         private readonly ApplicationDbContext _context;
         private readonly IEmailService _emailService;
+        private readonly ISubscriptionService _subscriptionService;
 
         public AuthService(UserManager<ApplicationUser> userManager,
                            IConfiguration configuration,
                            ApplicationDbContext context,
-                              IEmailService emailService)
+                              IEmailService emailService,
+                              ISubscriptionService subscriptionService)
         {
             _userManager = userManager;
             _configuration = configuration;
             _context = context;
             _emailService = emailService;
+            _subscriptionService = subscriptionService;
         }
 
         // ============================================================
@@ -62,6 +66,9 @@ namespace SmartTravelPlaners.BLL.Services.Concrete
             });
 
             await _context.SaveChangesAsync();
+
+            // Create default Free subscription for the new user
+            await _subscriptionService.EnsureDefaultSubscriptionAsync(user.Id);
 
             await SendConfirmEmailAsync(user.Id);
 

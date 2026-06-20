@@ -14,5 +14,7 @@ namespace SmartTravelPlaners.DAL.Entities
 
         // Navigation
         public ICollection<Trip> Trips { get; set; } = new HashSet<Trip>();
+        public ICollection<Subscription> Subscriptions { get; set; } = new HashSet<Subscription>();
+        public ICollection<UsageCounter> UsageCounters { get; set; } = new HashSet<UsageCounter>();
     }
 }

@@ -9,7 +9,6 @@ using OpenAI;
 using SmartTravelPlaners.BLL.Features.Flight.Services;
 using SmartTravelPlaners.BLL.Features.Flight.Interfaces;
 using SmartTravelPlaners.BLL.Features.Flight.Plugins;
-
 using SmartTravelPlaners.BLL.DTOs.Auth;
 using SmartTravelPlaners.BLL.Features.Chat.Interfaces;
 using SmartTravelPlaners.BLL.Features.Chat.Services;
@@ -29,6 +28,9 @@ using SmartTravelPlaners.BLL.Features.Weather.Services;
 using SmartTravelPlaners.BLL.Features.Weather.Settings;
 using SmartTravelPlaners.BLL.Services.Abstract;
 using SmartTravelPlaners.BLL.Services.Concrete;
+using SmartTravelPlaners.BLL.Features.Subscription.Interfaces;
+using SmartTravelPlaners.BLL.Features.Subscription.Services;
+using SmartTravelPlaners.BLL.Features.Subscription.Settings;
 using SmartTravelPlaners.DAL.Context;
 using SmartTravelPlaners.DAL.Entities;
 using SmartTravelPlaners.DAL.Repositories.Abstract;
@@ -226,7 +228,17 @@ namespace SmartTravelPlaners.PL
             builder.Services.AddScoped<ITripOrchestratorService, TripOrchestratorService>();
 
             // =======================================================
-            // 9. BUILD APP
+            // 10. SUBSCRIPTION & PAYMENTS (Paymob)
+            // =======================================================
+            builder.Services.Configure<PaymobSettings>(
+                builder.Configuration.GetSection("Paymob"));
+            builder.Services.AddHttpClient<IPaymobService, PaymobService>();
+            builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
+            builder.Services.AddScoped<IUsageLimitService, UsageLimitService>();
+            builder.Services.AddHostedService<SubscriptionExpiryJob>();
+
+            // =======================================================
+            // 11. BUILD APP
             // =======================================================
             var app = builder.Build();
 

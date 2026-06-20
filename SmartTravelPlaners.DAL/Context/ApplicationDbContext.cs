@@ -23,6 +23,12 @@ namespace SmartTravelPlaners.DAL.Context
         public DbSet<PlaceCache> PlacesCache { get; set; }
         public DbSet<RefreshToken> RefreshTokens { get; set; }
 
+        // Subscription & Payments
+        public DbSet<Plan> Plans { get; set; }
+        public DbSet<Subscription> Subscriptions { get; set; }
+        public DbSet<UsageCounter> UsageCounters { get; set; }
+        public DbSet<PaymentTransaction> PaymentTransactions { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder); 

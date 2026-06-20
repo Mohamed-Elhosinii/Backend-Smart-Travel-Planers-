@@ -1,9 +1,10 @@
-﻿using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using SmartTravelPlaners.BLL.Features.Chat.DTOs;
 using SmartTravelPlaners.BLL.Features.Chat.Interfaces;
 using SmartTravelPlaners.BLL.Features.Orchestrator.DTOs;
 using SmartTravelPlaners.BLL.Features.Orchestrator.Interfaces;
+using SmartTravelPlaners.BLL.Features.Subscription.Interfaces;
 using SmartTravelPlaners.DAL.Entities;
 using SmartTravelPlaners.DAL.Enums;
 using SmartTravelPlaners.DAL.Repositories.Abstract;
@@ -21,6 +22,7 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
         private readonly IUnitOfWork _unitOfWork;
         private readonly IChatCompletionService _ai;
         private readonly ITripOrchestratorService _orchestrator;
+        private readonly IUsageLimitService _usageLimitService;
 
         public ChatService(
             IChatRepository chatRepo,
@@ -28,6 +30,7 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
             IUserProfileRepository userProfileRepo,
             IUnitOfWork unitOfWork,
             ITripOrchestratorService orchestrator,
+            IUsageLimitService usageLimitService,
             Kernel kernel)
         {
             _chatRepo = chatRepo;
@@ -36,6 +39,7 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
             _unitOfWork = unitOfWork;
             _ai = kernel.GetRequiredService<IChatCompletionService>();
             _orchestrator = orchestrator;
+            _usageLimitService = usageLimitService;
         }
 
         public async Task<ChatReplyDto> SendMessageAsync(Guid sessionId, string userMessage)
@@ -43,6 +47,18 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
             var session = await _chatRepo.GetSessionAsync(sessionId);
             if (session == null)
                 throw new Exception("Session not found");
+
+            // ===========================
+            // USAGE LIMIT: Check message limit before calling the AI
+            // ===========================
+            var canSend = await _usageLimitService.CanSendMessageAsync(session.UserId);
+            if (!canSend)
+            {
+                return new ChatReplyDto
+                {
+                    Message = "You've reached your monthly message limit. Upgrade your plan to continue chatting! 🚀"
+                };
+            }
 
             var history = new ChatHistory();
 
@@ -99,6 +115,18 @@ Rules:
             // =========================
             if (rawReply.StartsWith("TRIP_READY:"))
             {
+                // ===========================
+                // USAGE LIMIT: Check trip limit before calling external APIs
+                // ===========================
+                var canTrip = await _usageLimitService.CanGenerateTripAsync(session.UserId);
+                if (!canTrip)
+                {
+                    return new ChatReplyDto
+                    {
+                        Message = "You've reached your monthly trip generation limit. Upgrade your plan to create more trips! 🚀"
+                    };
+                }
+
                 var json = rawReply.Substring("TRIP_READY:".Length).Trim();
 
                 var trip = await CreateTripFromJsonAsync(json, session.UserId);
@@ -122,6 +150,9 @@ Rules:
                 try
                 {
                     plan = await _orchestrator.BuildTripPlanAsync(trip.Id);
+
+                    // Increment trip usage after successful plan build
+                    await _usageLimitService.IncrementTripUsageAsync(session.UserId);
                 }
                 catch (Exception ex)
                 {
@@ -170,6 +201,9 @@ Rules:
                 Content = finalReply,
                 CreatedAt = DateTime.UtcNow
             });
+
+            // Increment message usage after successful AI reply
+            await _usageLimitService.IncrementMessageUsageAsync(session.UserId);
 
             session.UpdatedAt = DateTime.UtcNow;
             await _chatRepo.SaveChangesAsync();
