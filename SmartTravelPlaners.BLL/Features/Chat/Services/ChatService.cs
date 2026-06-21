@@ -48,9 +48,10 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
 
             history.AddSystemMessage(@" You are a smart travel assistant called TravelBot.
 Talk to the user in Arabic only, in a friendly and natural way. 
-Your job is to collect travel information from the user.
+Your job is to collect travel information from the user, and also help them
+modify an existing trip plan (hotel, activities, or basic trip fields).
 
-When ALL required fields are collected, respond ONLY with:
+When ALL required fields for a NEW trip are collected, respond ONLY with:
 
 TRIP_READY:{
   ""destination"": """",
@@ -61,13 +62,38 @@ TRIP_READY:{
   ""budgetTotal"": 1000,
   ""preferences"": []
 }
+If the user asks to see the current trip (e.g. ""ابعت الرحلة"", ""اعرض الرحلة"", ""show my trip""),
+respond ONLY with:
+
+TRIP_SHOW:{}
+
+If the user wants to change a simple field of an EXISTING trip (destination, dates,
+travelers, budget, originCity), respond ONLY with:
+
+TRIP_UPDATE_FIELD:{""field"": ""destination"", ""value"": ""Paris""}
+
+If the user wants a DIFFERENT HOTEL for their existing trip (e.g. ""غيرلي الفندق"",
+""مش عاجبني الفندق ده""), respond ONLY with:
+
+TRIP_UPDATE_HOTEL:{}
+
+If the user wants a DIFFERENT FLIGHT for their existing trip (e.g. ""غيرلي الطيران"",
+""عايز رحلة طيران تانية""), respond ONLY with:
+
+TRIP_UPDATE_FLIGHT:{}
+
+
+If the user wants DIFFERENT ACTIVITIES for a specific day of their existing trip
+(e.g. ""عايز أنشطة او اماكن تانية يوم 2""), respond ONLY with:
+
+TRIP_UPDATE_ACTIVITIES:{""dayNumber"": 2}
 
 Rules:
-- Always output ONLY this format when ready.
-- Do NOT output any other text.
+- Always output ONLY one of the formats above when ready, nothing else.
+- Do NOT output any other text alongside these formats.
 - Destination MUST be in English city name only (e.g., Paris, Dubai, Cairo).
 - If information is missing, continue asking naturally in Arabic.
-- Do NOT use multiple formats. ");
+- Do NOT mix multiple formats in one reply.");
 
             foreach (var msg in session.Messages.OrderBy(m => m.CreatedAt))
             {
@@ -97,7 +123,7 @@ Rules:
             // =========================
             // CREATE TRIP FLOW
             // =========================
-            if (rawReply.StartsWith("TRIP_READY:"))
+            if (rawReply.StartsWith("TRIP_READY:") && session.TripId == null)
             {
                 var json = rawReply.Substring("TRIP_READY:".Length).Trim();
 
@@ -135,10 +161,148 @@ Rules:
                 if (plan != null)
                     finalReply += plan.Summary;
                 else
-                    finalReply += "لكن بعض تفاصيل الرحلة (مثل الطيران) غير متاحة حاليًا.";
+                    finalReply += "لكن بعض تفاصيل الرحلة  غير متاحة حاليًا.";
 
             }
-            else if (rawReply.TrimStart().StartsWith("TRIP_UPDATE:"))
+
+            // =========================
+            // View Trip
+            // =========================
+            else if (rawReply.TrimStart().StartsWith("TRIP_SHOW:"))
+            {
+                if (session.TripId == null)
+                {
+                    return new ChatReplyDto
+                    {
+                        Message = "مفيش رحلة موجودة حالياً.",
+                        Plan = null
+                    };
+                }
+
+                try
+                {
+                    plan = await _orchestrator.GetCurrentPlanAsync(session.TripId.Value);
+                    finalReply = "دي تفاصيل رحلتك ";
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"GetCurrentPlanAsync failed: {ex.Message}");
+                    finalReply = "حصلت مشكلة وأنا بجيب الرحلة.";
+                }
+            }
+            // =========================
+            // UPDATE HOTEL FLOW
+            // =========================
+            else if (rawReply.TrimStart().StartsWith("TRIP_UPDATE_HOTEL:"))
+            {
+                if (session.TripId == null)
+                {
+                    return new ChatReplyDto
+                    {
+                        Message = "مفيش رحلة موجودة عشان نغيرلها الفندق. نبدأ نعمل رحلة جديدة؟",
+                        Plan = null
+                    };
+                }
+
+                try
+                {
+                    var newHotel = await _orchestrator.RegenerateHotelAsync(session.TripId.Value);
+
+                    finalReply = newHotel != null
+                        ? $"تم تغيير الفندق! الفندق الجديد: {newHotel.Name}."
+                        : "للأسف مش لاقي فندق بديل مناسب دلوقتي، ممكن نزود الميزانية أو نجرب تاني بعدين.";
+
+                    plan = await _orchestrator.GetCurrentPlanAsync(session.TripId.Value);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"RegenerateHotelAsync failed: {ex.Message}");
+                    finalReply = "حصلت مشكلة وإحنا بنغير الفندق، ممكن نجرب تاني؟";
+                }
+
+                session.Stage = ChatStage.Modifying;
+            }
+            // =========================
+            // UPDATE ACTIVITIES FLOW
+            // =========================
+            else if (rawReply.TrimStart().StartsWith("TRIP_UPDATE_ACTIVITIES:"))
+            {
+                if (session.TripId == null)
+                {
+                    return new ChatReplyDto
+                    {
+                        Message = "مفيش رحلة موجودة عشان نغيرلها الأنشطة. نبدأ نعمل رحلة جديدة؟",
+                        Plan = null
+                    };
+                }
+
+                var json = rawReply.Replace("TRIP_UPDATE_ACTIVITIES:", "").Trim();
+                var actOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
+                try
+                {
+                    var data = JsonSerializer.Deserialize<Dictionary<string, int>>(json, actOptions);
+                    var dayNumber = data?.GetValueOrDefault("dayNumber", 0) ?? 0;
+
+                    if (dayNumber <= 0)
+                    {
+                        finalReply = "ممكن تحدد رقم اليوم اللي عايز تغير أنشطته؟";
+                    }
+                    else
+                    {var newActivities = await _orchestrator.RegenerateDayActivitiesAsync(session.TripId.Value, dayNumber);
+
+                        finalReply = newActivities.Count > 0
+                            ? $"تم تغيير أنشطة يوم {dayNumber}!"
+                            : $"للأسف مش لاقية أنشطة بديلة كفاية ليوم {dayNumber} دلوقتي.";
+
+                        plan = await _orchestrator.GetCurrentPlanAsync(session.TripId.Value);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"RegenerateDayActivitiesAsync failed: {ex.Message}");
+                    finalReply = "حصلت مشكلة وإحنا بنغير الأنشطة، ممكن نجرب تاني؟";
+                }
+
+                session.Stage = ChatStage.Modifying;
+            }
+            // =========================
+            // UPDATE FLIGHT FLOW
+            // =========================
+            else if (rawReply.TrimStart().StartsWith("TRIP_UPDATE_FLIGHT:"))
+            {
+                if (session.TripId == null)
+                {
+                    return new ChatReplyDto
+                    {
+                        Message = "مفيش رحلة موجودة عشان نغيرلها الطيران. نبدأ نعمل رحلة جديدة؟",
+                        Plan = null
+                    };
+                }
+
+                try
+                {
+                    var newFlight = await _orchestrator.RegenerateFlightAsync(session.TripId.Value);
+
+                    finalReply = newFlight != null
+                        ? $"تم تغيير الطيران! الطيران الجديد: {newFlight.AirlineName} رقم {newFlight.FlightNumber}."
+                        : "للأسف مش لاقي رحلة طيران بديلة دلوقتي، ممكن نجرب تاني بعدين.";
+
+                    plan = await _orchestrator.GetCurrentPlanAsync(session.TripId.Value);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"RegenerateFlightAsync failed: {ex.Message}");
+                    finalReply = "حصلت مشكلة وإحنا بنغير الطيران، ممكن نجرب تاني؟";
+                }
+
+                session.Stage = ChatStage.Modifying;
+            }
+            // =========================
+            // UPDATE SIMPLE FIELD FLOW
+            // =========================
+            else if (rawReply.TrimStart().StartsWith("TRIP_UPDATE_FIELD:") ||
+                     rawReply.TrimStart().StartsWith("TRIP_UPDATE:"))
             {
                 if (session.TripId == null)
                 {
@@ -149,18 +313,101 @@ Rules:
                     };
                 }
 
-                var json = rawReply.Replace("TRIP_UPDATE:", "").Trim();
+                var json = rawReply
+     .Replace("TRIP_UPDATE_FIELD:", "")
+     .Replace("TRIP_UPDATE:", "")
+     .Trim();
 
-                await UpdateTripFieldAsync(json, session.TripId);
+                var changedField = await UpdateTripFieldAsync(json, session.TripId);
 
                 session.Stage = ChatStage.Modifying;
 
-                finalReply = "تم تحديث الرحلة بنجاح!";
+                try
+                {
+                    switch (changedField?.ToLower())
+                    {
+                        case "destination":
+                          
+                            await _orchestrator.RegenerateHotelAsync(session.TripId.Value);
+                            await _orchestrator.RegenerateFlightAsync(session.TripId.Value);
+
+                            var tripAfterDest = await _tripRepo.GetByIdAsync(session.TripId.Value);
+                            var daysAfterDest = tripAfterDest != null
+                                ? Math.Max(tripAfterDest.EndDate.DayNumber - tripAfterDest.StartDate.DayNumber, 1)
+                                : 1;
+
+                            for (int day = 1; day <= daysAfterDest; day++)
+                                await _orchestrator.RegenerateDayActivitiesAsync(session.TripId.Value, day);
+
+                            finalReply = "تم تغيير الوجهة، وتم تحديث الفندق والطيران والأنشطة كمان عشان تناسب المكان الجديد!";
+                            break;
+
+                        case "startdate":
+                        case "enddate":
+                         
+                            await _orchestrator.RegenerateHotelAsync(session.TripId.Value);
+                            await _orchestrator.RegenerateFlightAsync(session.TripId.Value);
+                            await _orchestrator.SyncDayPlansAsync(session.TripId.Value);
+
+                            finalReply = "تم تحديث تواريخ الرحلة، وتم تعديل الفندق والطيران وعدد أيام الخطة طبقًا للتاريخ الجديد!";
+                            break;
+
+                        case "numtravelers":
+                           
+                            await _orchestrator.RegenerateHotelAsync(session.TripId.Value);
+
+                            finalReply = "تم تحديث عدد المسافرين، وتم تعديل الفندق ليناسب العدد الجديد!";
+                            break;
+
+                        case "budgettotal":
+                            
+                            await _orchestrator.RegenerateHotelAsync(session.TripId.Value);
+
+                            var tripAfterBudget = await _tripRepo.GetByIdAsync(session.TripId.Value);
+                            var daysAfterBudget = tripAfterBudget != null
+                                ? Math.Max(tripAfterBudget.EndDate.DayNumber - tripAfterBudget.StartDate.DayNumber, 1)
+                                : 1;
+
+                            for (int day = 1; day <= daysAfterBudget; day++)
+                                await _orchestrator.RegenerateDayActivitiesAsync(session.TripId.Value, day);
+
+                            finalReply = "تم تحديث الميزانية، وتم تعديل الفندق والأنشطة طبقًا للميزانية الجديدة!";
+                            break;
+
+                        case "origincity":
+                            
+                            await _orchestrator.RegenerateFlightAsync(session.TripId.Value);
+
+                            finalReply = "تم تحديث مدينة الانطلاق، وتم تعديل الطيران!";
+                            break;
+
+                        default:
+                            finalReply = "تم تحديث الرحلة بنجاح!";
+                            break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Field cascade update failed ({changedField}): {ex.Message}");
+                    finalReply = "تم تحديث البيانات، لكن حصلت مشكلة في تحديث باقي تفاصيل الرحلة. ممكن تجرب تغيير الفندق أو الأنشطة لوحدهم.";
+                }
+
+                try
+                {
+                    plan = await _orchestrator.GetCurrentPlanAsync(session.TripId.Value);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"GetCurrentPlanAsync failed: {ex.Message}");
+                    plan = null;
+                }
             }
+           
             else
-            {
-                finalReply = rawReply;
-            }
+                {
+                    finalReply = rawReply;
+                }
+            
 
             await _chatRepo.AddMessageAsync(new ChatMessage
             {
@@ -236,18 +483,18 @@ Rules:
         }
 
         // =========================
-        // UPDATE TRIP (unchanged)
+        // UPDATE TRIP 
         // =========================
-        private async Task UpdateTripFieldAsync(string json, Guid? tripId)
+        private async Task<string?> UpdateTripFieldAsync(string json, Guid? tripId)
         {
-            if (tripId == null) return;
+            if (tripId == null) return null;
 
             var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
             var update = JsonSerializer.Deserialize<Dictionary<string, string>>(json, options);
-            if (update == null) return;
+            if (update == null) return null;
 
             var trip = await _tripRepo.GetByIdAsync(tripId.Value);
-            if (trip == null) return;
+            if (trip == null) return null;
 
             var field = update.GetValueOrDefault("field", "");
             var value = update.GetValueOrDefault("value", "");
@@ -259,10 +506,16 @@ Rules:
                     trip.Title = $"Trip to {value}";
                     break;
                 case "startdate":
-                    trip.StartDate = DateOnly.Parse(value);
+                    var newStart = DateOnly.Parse(value);
+                    if (newStart >= trip.EndDate)
+                        throw new Exception("تاريخ البداية لازم يكون قبل تاريخ النهاية");
+                    trip.StartDate = newStart;
                     break;
                 case "enddate":
-                    trip.EndDate = DateOnly.Parse(value);
+                    var newEnd = DateOnly.Parse(value);
+                    if (newEnd <= trip.StartDate)
+                        throw new Exception("تاريخ النهاية لازم يكون بعد تاريخ البداية");
+                    trip.EndDate = newEnd;
                     break;
                 case "numtravelers":
                     trip.NumTravelers = int.Parse(value);
@@ -276,6 +529,8 @@ Rules:
             }
 
             _tripRepo.Update(trip);
+
+            return field.ToLower(); 
         }
 
         public async Task<ChatSession> CreateSessionAsync(string userId)
