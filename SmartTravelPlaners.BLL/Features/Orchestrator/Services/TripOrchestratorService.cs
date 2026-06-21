@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using SmartTravelPlaners.BLL.Features.Place.Plugins;
 using SmartTravelPlaners.BLL.Features.Flight.DTOs;
 using SmartTravelPlaners.BLL.Features.Flight.Plugins;
@@ -7,6 +7,8 @@ using SmartTravelPlaners.BLL.Features.Hotel.Plugins;
 using SmartTravelPlaners.BLL.Features.Orchestrator.DTOs;
 using SmartTravelPlaners.BLL.Features.Orchestrator.Interfaces;
 using SmartTravelPlaners.BLL.Features.Place.DTOs;
+using SmartTravelPlaners.BLL.Features.Weather.DTOs;
+using SmartTravelPlaners.BLL.Features.Weather.Plugins;
 using SmartTravelPlaners.DAL.Entities;
 using SmartTravelPlaners.DAL.Enums;
 using SmartTravelPlaners.DAL.Repositories.Abstract;
@@ -19,6 +21,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
         private readonly HotelPlugin _hotelPlugin;
         private readonly FlightPlugin _flightPlugin;
         private readonly PlacesPlugin _placesPlugin;
+        private readonly WeatherPlugin _weatherPlugin;
 
         private static readonly JsonSerializerOptions JsonOptions = new()
         {
@@ -29,12 +32,14 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
             IUnitOfWork unitOfWork,
             HotelPlugin hotelPlugin,
             FlightPlugin flightPlugin,
-            PlacesPlugin placesPlugin)
+            PlacesPlugin placesPlugin,
+            WeatherPlugin weatherPlugin)
         {
             _unitOfWork = unitOfWork;
             _hotelPlugin = hotelPlugin;
             _flightPlugin = flightPlugin;
             _placesPlugin = placesPlugin;
+            _weatherPlugin = weatherPlugin;
         }
 
         public async Task<TripPlanDto> BuildTripPlanAsync(Guid tripId)
@@ -82,9 +87,14 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 }
             }
 
+            // Fetch the weather forecast and the day-by-day activities concurrently.
+            var weatherTask = GetWeatherAsync(trip.Destination, trip.StartDate, trip.EndDate);
             var dayPlans = await BuildDayPlansAsync(trip, numberOfDays, activitiesBudget);
+            var weather = await weatherTask;
 
-            await PersistPlanAsync(trip, hotelDto, flightDto, dayPlans);
+            AttachWeatherToDays(dayPlans, weather);
+
+            await PersistPlanAsync(trip, hotelDto, flightDto, dayPlans, flightBudget, weather);
 
             var estimatedTotal =
                 (decimal)(hotelDto?.Price.PricePerNight ?? 0) * Math.Max(numberOfNights, 1)
@@ -100,8 +110,9 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 BudgetTotal = trip.BudgetTotal,
                 EstimatedTotalCost = estimatedTotal,
                 Hotel = hotelDto is null ? null : MapHotel(hotelDto),
-                Flight = flightDto is null ? null : MapFlight(flightDto),
+                Flight = flightDto is null ? null : MapFlight(flightDto, flightBudget),
                 Days = dayPlans,
+                Weather = weather,
                 Summary = BuildSummary(trip, hotelDto, flightDto, dayPlans)
             };
 
@@ -160,7 +171,58 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 return null;
             }
         }
-       
+
+        // ============================================================
+        // Weather: fetch the destination forecast and map it to the plan
+        // ============================================================
+        private async Task<List<DayWeatherDto>> GetWeatherAsync(string city, DateOnly startDate, DateOnly endDate)
+        {
+            try
+            {
+                var start = startDate.ToString("yyyy-MM-dd");
+                var end = endDate.ToString("yyyy-MM-dd");
+
+                // Don't let a slow/hanging weather API block the whole plan (5s cap).
+                var task = _weatherPlugin.GetWeatherTimeline(city, start, end);
+                var completed = await Task.WhenAny(task, Task.Delay(5000));
+                if (completed != task)
+                    return new List<DayWeatherDto>();
+
+                var raw = await task;
+                if (raw is not VisualCrossingResponseDto response)
+                    return new List<DayWeatherDto>();
+
+                return response.Days.Select(d => new DayWeatherDto
+                {
+                    Date = DateOnly.TryParse(d.Datetime, out var dt) ? dt : startDate,
+                    TempMax = d.TempMax,
+                    TempMin = d.TempMin,
+                    Humidity = d.Humidity,
+                    PrecipProb = d.PrecipProb,
+                    Conditions = d.Conditions,
+                    IconUrl = d.IconUrl
+                }).ToList();
+            }
+            catch
+            {
+                return new List<DayWeatherDto>();
+            }
+        }
+
+        private static void AttachWeatherToDays(List<DayPlanDto> dayPlans, List<DayWeatherDto> weather)
+        {
+            if (weather.Count == 0) return;
+
+            var byDate = weather
+                .GroupBy(w => w.Date)
+                .ToDictionary(g => g.Key, g => g.First());
+
+            foreach (var day in dayPlans)
+            {
+                if (byDate.TryGetValue(day.Date, out var w))
+                    day.Weather = w;
+            }
+        }
 
         private async Task<List<DayPlanDto>> BuildDayPlansAsync(
             Trip trip, int numberOfDays, decimal activitiesBudget)
@@ -168,7 +230,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
             var dailyBudget = numberOfDays > 0 ? activitiesBudget / numberOfDays : 0;
             var usedPlaceIds = new HashSet<string>();
             var days = new List<DayPlanDto>();
-          
+
 
             var attractionsTask = SearchPlaces(trip.Destination, "attraction");
             var restaurantsTask = SearchPlaces(trip.Destination, "restaurant");
@@ -209,7 +271,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 var result = await Task.WhenAny(task, Task.Delay(5000));
 
                 if (result != task)
-                    return new List<PlaceDto>(); 
+                    return new List<PlaceDto>();
 
                 return await task;
             }
@@ -256,8 +318,14 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
             Trip trip,
             GoogleHotelDto? hotel,
             FlightDto? flight,
-            List<DayPlanDto> dayPlans)
+            List<DayPlanDto> dayPlans,
+            decimal flightBudget,
+            List<DayWeatherDto> weather)
         {
+            // Make rebuilds idempotent: wipe any previously-generated plan for this trip
+            // (e.g. after a TRIP_UPDATE) so we don't accumulate duplicate hotels/flights/days.
+            await ClearExistingPlanAsync(trip);
+
             if (hotel is not null)
             {
                 var hotelEntity = new SmartTravelPlaners.DAL.Entities.Hotel
@@ -290,7 +358,9 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                     Destination = flight.ArrivalAirport,
                     DepartureTime = ParseDateTime(flight.DepartureTime),
                     ArrivalTime = ParseDateTime(flight.ArrivalTime),
-                    Price = 0,
+                    // The schedule provider returns no ticket price, so persist the
+                    // orchestrator's allocated flight budget as the estimated cost.
+                    Price = flightBudget,
                     Status = BookingStatus.Suggested
                 };
 
@@ -329,8 +399,73 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 await _unitOfWork.Repository<TripDay>().AddAsync(tripDay);
             }
 
+            foreach (var w in weather)
+            {
+                await _unitOfWork.Repository<WeatherDay>().AddAsync(new WeatherDay
+                {
+                    Id = Guid.NewGuid(),
+                    TripId = trip.Id,
+                    Date = w.Date,
+                    TempMax = w.TempMax,
+                    TempMin = w.TempMin,
+                    Humidity = w.Humidity,
+                    PrecipProb = w.PrecipProb,
+                    Conditions = w.Conditions,
+                    IconUrl = w.IconUrl
+                });
+            }
+
             trip.Status = TripStatus.Confirmed;
             await _unitOfWork.CompleteAsync();
+        }
+
+        // Deletes any previously-generated hotel/flight/day/activity rows for this trip
+        // so a re-build (e.g. after the user updates the trip) doesn't create duplicates.
+        private async Task ClearExistingPlanAsync(Trip trip)
+        {
+            var hadData = false;
+
+            var activities = trip.Days.SelectMany(d => d.Activities).ToList();
+            if (activities.Count > 0)
+            {
+                _unitOfWork.Repository<Activity>().DeleteRange(activities);
+                hadData = true;
+            }
+
+            if (trip.Days.Count > 0)
+            {
+                _unitOfWork.Repository<TripDay>().DeleteRange(trip.Days);
+                hadData = true;
+            }
+
+            if (trip.Hotels.Count > 0)
+            {
+                _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Hotel>().DeleteRange(trip.Hotels);
+                hadData = true;
+            }
+
+            if (trip.Flights.Count > 0)
+            {
+                _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Flight>().DeleteRange(trip.Flights);
+                hadData = true;
+            }
+
+            if (trip.WeatherDays.Count > 0)
+            {
+                _unitOfWork.Repository<WeatherDay>().DeleteRange(trip.WeatherDays);
+                hadData = true;
+            }
+
+            if (hadData)
+            {
+                await _unitOfWork.CompleteAsync();
+
+                // Clear the in-memory navigation graph now that the rows are gone.
+                trip.Days.Clear();
+                trip.Hotels.Clear();
+                trip.Flights.Clear();
+                trip.WeatherDays.Clear();
+            }
         }
 
         private static TripHotelDto MapHotel(GoogleHotelDto hotel) => new()
@@ -342,14 +477,15 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
             Images = hotel.Images
         };
 
-        private static TripFlightDto MapFlight(FlightDto flight) => new()
+        private static TripFlightDto MapFlight(FlightDto flight, decimal estimatedPrice) => new()
         {
             AirlineName = flight.AirlineName,
             FlightNumber = flight.FlightNumber,
             DepartureAirport = flight.DepartureAirport,
             ArrivalAirport = flight.ArrivalAirport,
             DepartureTime = flight.DepartureTime,
-            ArrivalTime = flight.ArrivalTime
+            ArrivalTime = flight.ArrivalTime,
+            EstimatedPrice = estimatedPrice
         };
 
         private static string BuildSummary(

@@ -1,12 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <Compile Remove="Agents\**" />
-    <EmbeddedResource Remove="Agents\**" />
-    <None Remove="Agents\**" />
-  </ItemGroup>
-
-  <ItemGroup>
     <ProjectReference Include="..\SmartTravelPlaners.DAL\SmartTravelPlaners.DAL.csproj" />
   </ItemGroup>
 
@@ -20,11 +14,6 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.SemanticKernel" Version="1.77.0" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="Features\Flight\Settings\" />
-    <Folder Include="Features\Orchestrator\Prompts\" />
   </ItemGroup>
 
   <PropertyGroup>

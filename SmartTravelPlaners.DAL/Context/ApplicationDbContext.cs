@@ -17,6 +17,7 @@ namespace SmartTravelPlaners.DAL.Context
         public DbSet<Activity> Activities { get; set; }
         public DbSet<Hotel> Hotels { get; set; }
         public DbSet<Flight> Flights { get; set; }
+        public DbSet<WeatherDay> WeatherDays { get; set; }
         public DbSet<TripPreference> TripPreferences { get; set; }
         public DbSet<ChatSession> ChatSessions { get; set; }
         public DbSet<ChatMessage> ChatMessages { get; set; }

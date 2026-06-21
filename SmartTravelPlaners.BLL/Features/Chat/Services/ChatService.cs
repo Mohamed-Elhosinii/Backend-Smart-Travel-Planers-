@@ -63,7 +63,7 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
             var history = new ChatHistory();
 
             history.AddSystemMessage(@" You are a smart travel assistant called TravelBot.
-Talk to the user in Arabic only, in a friendly and natural way. 
+Talk to the user in Arabic only, in a friendly and natural way.
 Your job is to collect travel information from the user.
 
 When ALL required fields are collected, respond ONLY with:
@@ -78,12 +78,25 @@ TRIP_READY:{
   ""preferences"": []
 }
 
+If the user already has a trip and wants to change ONE field, respond ONLY with:
+
+TRIP_UPDATE:{ ""field"": ""<destination|originCity|startDate|endDate|numTravelers|budgetTotal>"", ""value"": ""<new value>"" }
+
 Rules:
-- Always output ONLY this format when ready.
-- Do NOT output any other text.
+- When ready to create a trip, output ONLY the TRIP_READY format.
+- When updating an existing trip, output ONLY the TRIP_UPDATE format.
+- Do NOT output any other text alongside these formats.
 - Destination MUST be in English city name only (e.g., Paris, Dubai, Cairo).
+- Dates MUST be in yyyy-MM-dd format.
 - If information is missing, continue asking naturally in Arabic.
-- Do NOT use multiple formats. ");
+- Do NOT use multiple formats at once. ");
+
+            // Let the model know whether a trip already exists so it picks TRIP_UPDATE vs TRIP_READY.
+            if (session.TripId != null)
+            {
+                history.AddSystemMessage(
+                    "The user already has an active trip. If they want to change something, use TRIP_UPDATE (not TRIP_READY).");
+            }
 
             foreach (var msg in session.Messages.OrderBy(m => m.CreatedAt))
             {
@@ -183,10 +196,24 @@ Rules:
                 var json = rawReply.Replace("TRIP_UPDATE:", "").Trim();
 
                 await UpdateTripFieldAsync(json, session.TripId);
+                await _chatRepo.SaveChangesAsync(); // persist the field change before rebuilding
 
                 session.Stage = ChatStage.Modifying;
 
-                finalReply = "تم تحديث الرحلة بنجاح!";
+                // Rebuild the plan so the change (dates / budget / destination / ...) is reflected.
+                try
+                {
+                    plan = await _orchestrator.BuildTripPlanAsync(session.TripId.Value);
+                }
+                catch (Exception ex)
+                {
+                    plan = null;
+                    Console.WriteLine($"Orchestrator rebuild failed: {ex.Message}");
+                }
+
+                finalReply = plan != null
+                    ? "تم تحديث الرحلة وإعادة بناء الخطة بنجاح! " + plan.Summary
+                    : "تم تحديث الرحلة، لكن حصل مشكلة في إعادة بناء بعض تفاصيل الخطة.";
             }
             else
             {

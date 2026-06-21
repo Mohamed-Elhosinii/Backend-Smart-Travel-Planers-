@@ -186,9 +186,7 @@ namespace SmartTravelPlaners.PL
             builder.Services.AddHttpClient();
             builder.Services.AddHttpClient<IFlightService, FlightService>();
 
-            builder.Services.AddScoped<IFlightService, FlightService>();
-
-            builder.Services.AddScoped<IWeatherApiService, WeatherApiService>();
+            // Plugins consumed directly by the orchestrator (registered as concrete types).
             builder.Services.AddScoped<WeatherPlugin>();
             builder.Services.AddScoped<PlacesPlugin>();
             builder.Services.AddScoped<HotelPlugin>();
@@ -214,7 +212,6 @@ namespace SmartTravelPlaners.PL
             builder.Services.Configure<WeatherApiSettings>(
                 builder.Configuration.GetSection("WeatherApiSettings"));
             builder.Services.AddHttpClient<IWeatherApiService, WeatherApiService>();
-            builder.Services.AddScoped<WeatherApiService>();
 
             // =======================================================
             // 8. CHAT SERVICE

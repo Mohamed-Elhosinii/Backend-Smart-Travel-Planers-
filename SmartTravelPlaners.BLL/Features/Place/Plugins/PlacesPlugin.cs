@@ -1,14 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿using System.ComponentModel;
 using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 using SmartTravelPlaners.BLL.Features.Place.DTOs;
 using SmartTravelPlaners.BLL.Features.Place.Interfaces;
-using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Text;
 
     namespace SmartTravelPlaners.BLL.Features.Place.Plugins
     {
