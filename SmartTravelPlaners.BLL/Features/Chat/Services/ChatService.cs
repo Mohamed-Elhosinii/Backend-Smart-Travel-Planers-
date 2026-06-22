@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using SmartTravelPlaners.BLL.Features.Chat.DTOs;
@@ -23,6 +24,7 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
         private readonly IChatCompletionService _ai;
         private readonly ITripOrchestratorService _orchestrator;
         private readonly IUsageLimitService _usageLimitService;
+        private readonly IServiceProvider _serviceProvider;
 
         public ChatService(
             IChatRepository chatRepo,
@@ -31,6 +33,7 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
             IUnitOfWork unitOfWork,
             ITripOrchestratorService orchestrator,
             IUsageLimitService usageLimitService,
+            IServiceProvider serviceProvider,
             Kernel kernel)
         {
             _chatRepo = chatRepo;
@@ -40,6 +43,7 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
             _ai = kernel.GetRequiredService<IChatCompletionService>();
             _orchestrator = orchestrator;
             _usageLimitService = usageLimitService;
+            _serviceProvider = serviceProvider;
         }
 
         public async Task<ChatReplyDto> SendMessageAsync(Guid sessionId, string userMessage)
@@ -63,14 +67,9 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
             var history = new ChatHistory();
 
             history.AddSystemMessage(@" You are a smart travel assistant called TravelBot.
-<<<<<<< HEAD
-Talk to the user in Arabic only, in a friendly and natural way.
-Your job is to collect travel information from the user.
-=======
 Talk to the user in Arabic only, in a friendly and natural way. 
 Your job is to collect travel information from the user, and also help them
 modify an existing trip plan (hotel, activities, or basic trip fields).
->>>>>>> nourin
 
 When ALL required fields for a NEW trip are collected, respond ONLY with:
 
@@ -114,18 +113,12 @@ If the user already has a trip and wants to change ONE field, respond ONLY with:
 TRIP_UPDATE:{ ""field"": ""<destination|originCity|startDate|endDate|numTravelers|budgetTotal>"", ""value"": ""<new value>"" }
 
 Rules:
-<<<<<<< HEAD
-- When ready to create a trip, output ONLY the TRIP_READY format.
-- When updating an existing trip, output ONLY the TRIP_UPDATE format.
-=======
 - Always output ONLY one of the formats above when ready, nothing else.
->>>>>>> nourin
 - Do NOT output any other text alongside these formats.
 - Destination MUST be in English city name only (e.g., Paris, Dubai, Cairo).
 - Dates MUST be in yyyy-MM-dd format.
 - If information is missing, continue asking naturally in Arabic.
-<<<<<<< HEAD
-- Do NOT use multiple formats at once. ");
+- Do NOT use multiple formats at once.");
 
             // Let the model know whether a trip already exists so it picks TRIP_UPDATE vs TRIP_READY.
             if (session.TripId != null)
@@ -133,9 +126,6 @@ Rules:
                 history.AddSystemMessage(
                     "The user already has an active trip. If they want to change something, use TRIP_UPDATE (not TRIP_READY).");
             }
-=======
-- Do NOT mix multiple formats in one reply.");
->>>>>>> nourin
 
             foreach (var msg in session.Messages.OrderBy(m => m.CreatedAt))
             {
@@ -197,28 +187,29 @@ Rules:
                 await _chatRepo.SaveChangesAsync();
 
                 // =========================
-                // SAFE ORCHESTRATOR CALL
+                // BACKGROUND ORCHESTRATOR CALL
                 // =========================
-                try
+                var tripId = trip.Id;
+                var userId = session.UserId;
+                _ = Task.Run(async () =>
                 {
-                    plan = await _orchestrator.BuildTripPlanAsync(trip.Id);
+                    try
+                    {
+                        using var scope = _serviceProvider.CreateScope();
+                        var orchestrator = scope.ServiceProvider.GetRequiredService<ITripOrchestratorService>();
+                        var usageService = scope.ServiceProvider.GetRequiredService<IUsageLimitService>();
+                        
+                        await orchestrator.BuildTripPlanAsync(tripId);
+                        await usageService.IncrementTripUsageAsync(userId);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Orchestrator failed: {ex.Message}");
+                    }
+                });
 
-                    // Increment trip usage after successful plan build
-                    await _usageLimitService.IncrementTripUsageAsync(session.UserId);
-                }
-                catch (Exception ex)
-                {
-                    plan = null;
-                    Console.WriteLine($"Orchestrator failed: {ex.Message}");
-                }
-
-                finalReply = $"تم إنشاء رحلتك إلى {trip.Destination}! " +
-                             $"من {trip.StartDate} إلى {trip.EndDate}. ";
-
-                if (plan != null)
-                    finalReply += plan.Summary;
-                else
-                    finalReply += "لكن بعض تفاصيل الرحلة  غير متاحة حاليًا.";
+                finalReply = $"ممتاز! جاري تجهيز أفضل خطة لرحلتك إلى {trip.Destination} (من {trip.StartDate} إلى {trip.EndDate}). ثواني وهتكون جاهزة ✈️";
+                plan = null;
 
             }
 
@@ -261,21 +252,23 @@ Rules:
                     };
                 }
 
-                try
+                var tripId = session.TripId.Value;
+                _ = Task.Run(async () =>
                 {
-                    var newHotel = await _orchestrator.RegenerateHotelAsync(session.TripId.Value);
+                    try
+                    {
+                        using var scope = _serviceProvider.CreateScope();
+                        var orchestrator = scope.ServiceProvider.GetRequiredService<ITripOrchestratorService>();
+                        await orchestrator.RegenerateHotelAsync(tripId);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"RegenerateHotelAsync failed: {ex.Message}");
+                    }
+                });
 
-                    finalReply = newHotel != null
-                        ? $"تم تغيير الفندق! الفندق الجديد: {newHotel.Name}."
-                        : "للأسف مش لاقي فندق بديل مناسب دلوقتي، ممكن نزود الميزانية أو نجرب تاني بعدين.";
-
-                    plan = await _orchestrator.GetCurrentPlanAsync(session.TripId.Value);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"RegenerateHotelAsync failed: {ex.Message}");
-                    finalReply = "حصلت مشكلة وإحنا بنغير الفندق، ممكن نجرب تاني؟";
-                }
+                finalReply = "جاري البحث عن فندق بديل مناسب... ثواني وهنعرضهولك.";
+                plan = null;
 
                 session.Stage = ChatStage.Modifying;
             }
@@ -306,18 +299,29 @@ Rules:
                         finalReply = "ممكن تحدد رقم اليوم اللي عايز تغير أنشطته؟";
                     }
                     else
-                    {var newActivities = await _orchestrator.RegenerateDayActivitiesAsync(session.TripId.Value, dayNumber);
+                    {
+                        var tripId = session.TripId.Value;
+                        _ = Task.Run(async () =>
+                        {
+                            try
+                            {
+                                using var scope = _serviceProvider.CreateScope();
+                                var orchestrator = scope.ServiceProvider.GetRequiredService<ITripOrchestratorService>();
+                                await orchestrator.RegenerateDayActivitiesAsync(tripId, dayNumber);
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"RegenerateDayActivitiesAsync failed: {ex.Message}");
+                            }
+                        });
 
-                        finalReply = newActivities.Count > 0
-                            ? $"تم تغيير أنشطة يوم {dayNumber}!"
-                            : $"للأسف مش لاقية أنشطة بديلة كفاية ليوم {dayNumber} دلوقتي.";
-
-                        plan = await _orchestrator.GetCurrentPlanAsync(session.TripId.Value);
+                        finalReply = $"جاري تغيير أنشطة يوم {dayNumber}... ثواني وهنعرضهالك.";
+                        plan = null;
                     }
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"RegenerateDayActivitiesAsync failed: {ex.Message}");
+                    Console.WriteLine($"RegenerateDayActivitiesAsync parsing failed: {ex.Message}");
                     finalReply = "حصلت مشكلة وإحنا بنغير الأنشطة، ممكن نجرب تاني؟";
                 }
 
@@ -337,21 +341,23 @@ Rules:
                     };
                 }
 
-                try
+                var tripId = session.TripId.Value;
+                _ = Task.Run(async () =>
                 {
-                    var newFlight = await _orchestrator.RegenerateFlightAsync(session.TripId.Value);
+                    try
+                    {
+                        using var scope = _serviceProvider.CreateScope();
+                        var orchestrator = scope.ServiceProvider.GetRequiredService<ITripOrchestratorService>();
+                        await orchestrator.RegenerateFlightAsync(tripId);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"RegenerateFlightAsync failed: {ex.Message}");
+                    }
+                });
 
-                    finalReply = newFlight != null
-                        ? $"تم تغيير الطيران! الطيران الجديد: {newFlight.AirlineName} رقم {newFlight.FlightNumber}."
-                        : "للأسف مش لاقي رحلة طيران بديلة دلوقتي، ممكن نجرب تاني بعدين.";
-
-                    plan = await _orchestrator.GetCurrentPlanAsync(session.TripId.Value);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"RegenerateFlightAsync failed: {ex.Message}");
-                    finalReply = "حصلت مشكلة وإحنا بنغير الطيران، ممكن نجرب تاني؟";
-                }
+                finalReply = "جاري البحث عن رحلة طيران بديلة... ثواني وهنعرضهالك.";
+                plan = null;
 
                 session.Stage = ChatStage.Modifying;
             }
@@ -375,111 +381,81 @@ Rules:
      .Replace("TRIP_UPDATE:", "")
      .Trim();
 
-<<<<<<< HEAD
                 await UpdateTripFieldAsync(json, session.TripId);
                 await _chatRepo.SaveChangesAsync(); // persist the field change before rebuilding
 
                 session.Stage = ChatStage.Modifying;
 
-                // Rebuild the plan so the change (dates / budget / destination / ...) is reflected.
                 try
                 {
-                    plan = await _orchestrator.BuildTripPlanAsync(session.TripId.Value);
-                }
-                catch (Exception ex)
-                {
-                    plan = null;
-                    Console.WriteLine($"Orchestrator rebuild failed: {ex.Message}");
-                }
+                    var tripId = session.TripId.Value;
+                    var changedField = await UpdateTripFieldAsync(json, tripId);
+                    await _chatRepo.SaveChangesAsync();
 
-                finalReply = plan != null
-                    ? "تم تحديث الرحلة وإعادة بناء الخطة بنجاح! " + plan.Summary
-                    : "تم تحديث الرحلة، لكن حصل مشكلة في إعادة بناء بعض تفاصيل الخطة.";
-=======
-                var changedField = await UpdateTripFieldAsync(json, session.TripId);
-
-                session.Stage = ChatStage.Modifying;
-
-                try
-                {
-                    switch (changedField?.ToLower())
+                    _ = Task.Run(async () =>
                     {
-                        case "destination":
-                          
-                            await _orchestrator.RegenerateHotelAsync(session.TripId.Value);
-                            await _orchestrator.RegenerateFlightAsync(session.TripId.Value);
+                        try
+                        {
+                            using var scope = _serviceProvider.CreateScope();
+                            var orchestrator = scope.ServiceProvider.GetRequiredService<ITripOrchestratorService>();
+                            var tripRepo = scope.ServiceProvider.GetRequiredService<ITripRepository>();
 
-                            var tripAfterDest = await _tripRepo.GetByIdAsync(session.TripId.Value);
-                            var daysAfterDest = tripAfterDest != null
-                                ? Math.Max(tripAfterDest.EndDate.DayNumber - tripAfterDest.StartDate.DayNumber, 1)
-                                : 1;
+                            switch (changedField?.ToLower())
+                            {
+                                case "destination":
+                                    await orchestrator.RegenerateHotelAsync(tripId);
+                                    await orchestrator.RegenerateFlightAsync(tripId);
+                                    var tripAfterDest = await tripRepo.GetByIdAsync(tripId);
+                                    var daysAfterDest = tripAfterDest != null
+                                        ? Math.Max(tripAfterDest.EndDate.DayNumber - tripAfterDest.StartDate.DayNumber, 1) : 1;
+                                    for (int day = 1; day <= daysAfterDest; day++)
+                                        await orchestrator.RegenerateDayActivitiesAsync(tripId, day);
+                                    break;
 
-                            for (int day = 1; day <= daysAfterDest; day++)
-                                await _orchestrator.RegenerateDayActivitiesAsync(session.TripId.Value, day);
+                                case "startdate":
+                                case "enddate":
+                                    await orchestrator.RegenerateHotelAsync(tripId);
+                                    await orchestrator.RegenerateFlightAsync(tripId);
+                                    await orchestrator.SyncDayPlansAsync(tripId);
+                                    break;
 
-                            finalReply = "تم تغيير الوجهة، وتم تحديث الفندق والطيران والأنشطة كمان عشان تناسب المكان الجديد!";
-                            break;
+                                case "numtravelers":
+                                    await orchestrator.RegenerateHotelAsync(tripId);
+                                    break;
 
-                        case "startdate":
-                        case "enddate":
-                         
-                            await _orchestrator.RegenerateHotelAsync(session.TripId.Value);
-                            await _orchestrator.RegenerateFlightAsync(session.TripId.Value);
-                            await _orchestrator.SyncDayPlansAsync(session.TripId.Value);
+                                case "budgettotal":
+                                    await orchestrator.RegenerateHotelAsync(tripId);
+                                    var tripAfterBudget = await tripRepo.GetByIdAsync(tripId);
+                                    var daysAfterBudget = tripAfterBudget != null
+                                        ? Math.Max(tripAfterBudget.EndDate.DayNumber - tripAfterBudget.StartDate.DayNumber, 1) : 1;
+                                    for (int day = 1; day <= daysAfterBudget; day++)
+                                        await orchestrator.RegenerateDayActivitiesAsync(tripId, day);
+                                    break;
 
-                            finalReply = "تم تحديث تواريخ الرحلة، وتم تعديل الفندق والطيران وعدد أيام الخطة طبقًا للتاريخ الجديد!";
-                            break;
+                                case "origincity":
+                                    await orchestrator.RegenerateFlightAsync(tripId);
+                                    break;
+                                
+                                default:
+                                    // Just rebuild plan if field is something else
+                                    await orchestrator.BuildTripPlanAsync(tripId);
+                                    break;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Field cascade update failed: {ex.Message}");
+                        }
+                    });
 
-                        case "numtravelers":
-                           
-                            await _orchestrator.RegenerateHotelAsync(session.TripId.Value);
-
-                            finalReply = "تم تحديث عدد المسافرين، وتم تعديل الفندق ليناسب العدد الجديد!";
-                            break;
-
-                        case "budgettotal":
-                            
-                            await _orchestrator.RegenerateHotelAsync(session.TripId.Value);
-
-                            var tripAfterBudget = await _tripRepo.GetByIdAsync(session.TripId.Value);
-                            var daysAfterBudget = tripAfterBudget != null
-                                ? Math.Max(tripAfterBudget.EndDate.DayNumber - tripAfterBudget.StartDate.DayNumber, 1)
-                                : 1;
-
-                            for (int day = 1; day <= daysAfterBudget; day++)
-                                await _orchestrator.RegenerateDayActivitiesAsync(session.TripId.Value, day);
-
-                            finalReply = "تم تحديث الميزانية، وتم تعديل الفندق والأنشطة طبقًا للميزانية الجديدة!";
-                            break;
-
-                        case "origincity":
-                            
-                            await _orchestrator.RegenerateFlightAsync(session.TripId.Value);
-
-                            finalReply = "تم تحديث مدينة الانطلاق، وتم تعديل الطيران!";
-                            break;
-
-                        default:
-                            finalReply = "تم تحديث الرحلة بنجاح!";
-                            break;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Field cascade update failed ({changedField}): {ex.Message}");
-                    finalReply = "تم تحديث البيانات، لكن حصلت مشكلة في تحديث باقي تفاصيل الرحلة. ممكن تجرب تغيير الفندق أو الأنشطة لوحدهم.";
-                }
-
-                try
-                {
-                    plan = await _orchestrator.GetCurrentPlanAsync(session.TripId.Value);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"GetCurrentPlanAsync failed: {ex.Message}");
+                    finalReply = "تم استلام التعديلات وجاري تحديث تفاصيل الرحلة... ثواني وتكون جاهزة.";
                     plan = null;
                 }
->>>>>>> nourin
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Update field failed: {ex.Message}");
+                    finalReply = "حصلت مشكلة في تحديث البيانات، ممكن تجرب تاني.";
+                }
             }
            
             else
@@ -625,6 +601,18 @@ Rules:
         public async Task<List<ChatMessage>> GetHistoryAsync(Guid sessionId)
         {
             return await _chatRepo.GetMessagesAsync(sessionId);
+        }
+
+        public async Task<TripPlanDto?> GetTripPlanAsync(Guid tripId)
+        {
+            try
+            {
+                return await _orchestrator.GetCurrentPlanAsync(tripId);
+            }
+            catch
+            {
+                return null;
+            }
         }
     }
 }

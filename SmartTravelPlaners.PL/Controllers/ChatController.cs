@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SmartTravelPlaners.BLL.Features.Chat.Interfaces;
 using System.Security.Claims;
@@ -45,6 +45,15 @@ namespace SmartTravelPlaners.PL.Controllers
         {
             var messages = await _chatService.GetHistoryAsync(sessionId);
             return Ok(messages);
+        }
+
+        // GET api/chat/plan/{tripId}
+        [HttpGet("plan/{tripId}")]
+        public async Task<IActionResult> GetPlan(Guid tripId)
+        {
+            var plan = await _chatService.GetTripPlanAsync(tripId);
+            if (plan == null) return NotFound("Plan not found or not ready.");
+            return Ok(plan);
         }
     }
 
