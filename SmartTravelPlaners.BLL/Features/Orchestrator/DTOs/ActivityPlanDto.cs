@@ -1,4 +1,5 @@
-﻿using System;
+﻿using SmartTravelPlaners.BLL.Features.Place.DTOs;
+using System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -14,5 +15,6 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.DTOs
         public string? TimeSlot { get; set; }               // "Morning" | "Lunch" | "Afternoon" | "Dinner"
         public decimal EstimatedCost { get; set; }
         public string? PlaceId { get; set; }
+        public List<PlacePhotoDto> Images { get; set; }= new List<PlacePhotoDto>();
     }
 }

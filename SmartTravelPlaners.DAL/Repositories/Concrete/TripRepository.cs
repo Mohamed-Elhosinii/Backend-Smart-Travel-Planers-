@@ -23,5 +23,18 @@ namespace SmartTravelPlaners.DAL.Repositories.Concrete
                 .Include(t => t.WeatherDays)
                 .FirstOrDefaultAsync(t => t.Id == tripId);
         }
+        public async Task<Trip?> GetTripWithDetailsNoTrackingAsync(Guid tripId)
+        {
+            return await _context.Trips
+                .AsNoTracking()
+                .Include(t => t.Days)
+                    .ThenInclude(d => d.Activities)
+                .Include(t => t.Hotels)
+                .Include(t => t.Flights)
+                .FirstOrDefaultAsync(t => t.Id == tripId);
+        }
+       
     }
-}
+
+    }
+
