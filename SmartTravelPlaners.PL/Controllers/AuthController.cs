@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Facebook;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authorization;
@@ -37,6 +37,7 @@ namespace SmartTravelPlaners.PL.Controllers
             }
 
             [HttpPost("login")]
+            [ProducesResponseType(typeof(AuthResponseDto), StatusCodes.Status200OK)]
             public async Task<IActionResult> Login([FromBody] LoginDto dto)
             {
                 try

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using SmartTravelPlaners.BLL.Features.Chat.DTOs;
@@ -23,6 +24,7 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
         private readonly IChatCompletionService _ai;
         private readonly ITripOrchestratorService _orchestrator;
         private readonly IUsageLimitService _usageLimitService;
+        private readonly IConfiguration _configuration;
 
         public ChatService(
             IChatRepository chatRepo,
@@ -31,7 +33,8 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
             IUnitOfWork unitOfWork,
             ITripOrchestratorService orchestrator,
             IUsageLimitService usageLimitService,
-            Kernel kernel)
+            Kernel kernel,
+            IConfiguration configuration)
         {
             _chatRepo = chatRepo;
             _tripRepo = tripRepo;
@@ -40,13 +43,17 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
             _ai = kernel.GetRequiredService<IChatCompletionService>();
             _orchestrator = orchestrator;
             _usageLimitService = usageLimitService;
+            _configuration = configuration;
         }
 
-        public async Task<ChatReplyDto> SendMessageAsync(Guid sessionId, string userMessage)
+        public async Task<ChatReplyDto> SendMessageAsync(Guid sessionId, string userId, string userMessage)
         {
             var session = await _chatRepo.GetSessionAsync(sessionId);
             if (session == null)
                 throw new Exception("Session not found");
+
+            if (session.UserId != userId)
+                throw new UnauthorizedAccessException("You do not have access to this session.");
 
             // ===========================
             // USAGE LIMIT: Check message limit before calling the AI
@@ -63,7 +70,8 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
             var history = new ChatHistory();
 
             history.AddSystemMessage(@" You are a smart travel assistant called TravelBot.
-Talk to the user in Arabic only, in a friendly and natural way.
+CRITICAL: Always reply in the exact same language used by the user. If the user speaks or asks in English, your response must be in English. If the user speaks or asks in Arabic, your response must be in Arabic.
+Talk to the user in a friendly and natural way.
 Your job is to collect travel information from the user.
 
 When ALL required fields are collected, respond ONLY with:
@@ -88,7 +96,7 @@ Rules:
 - Do NOT output any other text alongside these formats.
 - Destination MUST be in English city name only (e.g., Paris, Dubai, Cairo).
 - Dates MUST be in yyyy-MM-dd format.
-- If information is missing, continue asking naturally in Arabic.
+- If information is missing, continue asking naturally in the user's language.
 - Do NOT use multiple formats at once. ");
 
             // Let the model know whether a trip already exists so it picks TRIP_UPDATE vs TRIP_READY.
@@ -117,8 +125,36 @@ Rules:
                 CreatedAt = DateTime.UtcNow
             });
 
-            var result = await _ai.GetChatMessageContentAsync(history);
-            var rawReply = result.Content ?? "Sorry, unable to respond right now";
+            var apiKey = _configuration["GitHubModels:Token"];
+            var endpoint = _configuration["GitHubModels:Endpoint"];
+            var modelId = _configuration["GitHubModels:ModelId"];
+
+            if (string.IsNullOrWhiteSpace(apiKey))
+            {
+                throw new ArgumentNullException("GitHubModels:Token", "API Key is missing or empty in appsettings.json.");
+            }
+
+            Console.WriteLine("DEBUG BACKEND: Received message from user, initiating LLM call...");
+            Console.WriteLine($"DEBUG BACKEND: Hitting provider Endpoint: {endpoint} | ModelId: {modelId}");
+            Microsoft.SemanticKernel.ChatMessageContent result = null;
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            try
+            {
+                result = await _ai.GetChatMessageContentAsync(history, null, null, cts.Token);
+                Console.WriteLine("DEBUG BACKEND: LLM call completed successfully.");
+            }
+            catch (OperationCanceledException)
+            {
+                Console.WriteLine("DEBUG BACKEND ERROR: LLM call timed out after 15 seconds.");
+                return new ChatReplyDto { Message = "Sorry, the AI service took too long to respond. Please try again later." };
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"DEBUG BACKEND ERROR: LLM call failed or timed out: {ex.Message}");
+                return new ChatReplyDto { Message = "Sorry, the AI service is currently unavailable. Please try again later." };
+            }
+
+            var rawReply = result?.Content ?? "Sorry, unable to respond right now";
 
             string finalReply;
             TripPlanDto? plan = null;
@@ -238,7 +274,8 @@ Rules:
             return new ChatReplyDto
             {
                 Message = finalReply,
-                Plan = plan
+                Plan = plan,
+                TripId = session.TripId
             };
         }
 
@@ -346,9 +383,18 @@ Rules:
             return session;
         }
 
-        public async Task<List<ChatMessage>> GetHistoryAsync(Guid sessionId)
+        public async Task<List<ChatMessage>> GetHistoryAsync(Guid sessionId, string userId)
         {
+            var session = await _chatRepo.GetSessionAsync(sessionId);
+            if (session == null || session.UserId != userId)
+                throw new UnauthorizedAccessException("You do not have access to this session.");
+
             return await _chatRepo.GetMessagesAsync(sessionId);
+        }
+
+        public async Task<List<ChatSession>> GetUserSessionsAsync(string userId)
+        {
+            return await _chatRepo.GetSessionsByUserAsync(userId);
         }
     }
 }

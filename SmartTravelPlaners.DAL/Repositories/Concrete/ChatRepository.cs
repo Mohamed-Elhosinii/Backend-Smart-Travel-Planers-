@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using SmartTravelPlaners.DAL.Context;
 using SmartTravelPlaners.DAL.Entities;
 using SmartTravelPlaners.DAL.Enums;
@@ -105,6 +105,44 @@ namespace SmartTravelPlaners.DAL.Repositories.Concrete
                 .ToListAsync();
 
             return session;
+        }
+
+        public async Task<List<ChatSession>> GetSessionsByUserAsync(string userId)
+        {
+            var conn = _context.Database.GetDbConnection();
+            await conn.OpenAsync();
+
+            var sessions = new List<ChatSession>();
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+                    SELECT Id, UserId, TripId, Stage, CreatedAt, UpdatedAt
+                    FROM ChatSessions
+                    WHERE UserId = @userId
+                    ORDER BY UpdatedAt DESC";
+
+                var param = cmd.CreateParameter();
+                param.ParameterName = "@userId";
+                param.Value = userId;
+                cmd.Parameters.Add(param);
+
+                using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    sessions.Add(new ChatSession
+                    {
+                        Id = reader.GetGuid(0),
+                        UserId = reader.GetString(1),
+                        TripId = reader.IsDBNull(2) ? null : reader.GetGuid(2),
+                        Stage = (ChatStage)reader.GetInt32(3),
+                        CreatedAt = reader.GetDateTime(4),
+                        UpdatedAt = reader.GetDateTime(5)
+                    });
+                }
+            }
+
+            return sessions;
         }
 
         // create a new session without a trip - trip gets linked later
