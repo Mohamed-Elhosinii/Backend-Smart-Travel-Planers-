@@ -71,6 +71,15 @@ namespace SmartTravelPlaners.PL.Controllers
             var messages = await _chatService.GetHistoryAsync(sessionId, userId);
             return Ok(messages);
         }
+
+        // GET api/chat/plan/{tripId}
+        [HttpGet("plan/{tripId}")]
+        public async Task<IActionResult> GetPlan(Guid tripId)
+        {
+            var plan = await _chatService.GetTripPlanAsync(tripId);
+            if (plan == null) return NotFound("Plan not found or not ready.");
+            return Ok(plan);
+        }
     }
 
     public class SendMessageDto

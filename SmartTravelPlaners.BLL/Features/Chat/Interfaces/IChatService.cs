@@ -1,4 +1,5 @@
 using SmartTravelPlaners.BLL.Features.Chat.DTOs;
+using SmartTravelPlaners.BLL.Features.Orchestrator.DTOs;
 using SmartTravelPlaners.DAL.Entities;
 
 namespace SmartTravelPlaners.BLL.Features.Chat.Interfaces
@@ -9,8 +10,8 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Interfaces
 
         Task<ChatSession> CreateSessionAsync(string userId);
 
-        Task<List<ChatMessage>> GetHistoryAsync(Guid sessionId, string userId);
+        Task<List<ChatMessage>> GetHistoryAsync(Guid sessionId);
 
-        Task<List<ChatSession>> GetUserSessionsAsync(string userId);
+        Task<TripPlanDto?> GetTripPlanAsync(Guid tripId);
     }
 }
