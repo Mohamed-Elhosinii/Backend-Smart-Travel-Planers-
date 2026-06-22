@@ -177,7 +177,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
             }
         }
 
-<<<<<<< HEAD
+
         // ============================================================
         // Weather: fetch the destination forecast and map it to the plan
         // ============================================================
@@ -229,8 +229,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                     day.Weather = w;
             }
         }
-=======
->>>>>>> nourin
+
 
         private async Task<List<DayPlanDto>> BuildDayPlansAsync(
             Trip trip, int numberOfDays, decimal activitiesBudget)
@@ -606,17 +605,17 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
 
         public async Task<List<ActivityPlanDto>> RegenerateDayActivitiesAsync(Guid tripId, int dayNumber)
         {
-            // 1. Get TripDay من DB مباشرة
+           
             var tripDay = (await _unitOfWork.Repository<TripDay>()
                 .FindAsync(d => d.TripId == tripId && d.DayNumber == dayNumber))
                 .FirstOrDefault()
                 ?? throw new Exception($"Day {dayNumber} not found for trip {tripId}");
 
-            // 2. Get Trip
+           
             var trip = await _unitOfWork.Trips.GetTripWithDetailsAsync(tripId)
                 ?? throw new Exception($"Trip {tripId} not found");
 
-            // 3. احسب الميزانية
+           
             var numberOfDays = Math.Max(trip.EndDate.DayNumber - trip.StartDate.DayNumber, 1);
 
             var activitiesBudget = trip.OriginCity is not null
@@ -625,7 +624,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
 
             var dailyBudget = activitiesBudget / numberOfDays;
 
-            // 4. 🚨 DELETE OLD ACTIVITIES FIRST (مهم جدًا)
+           
             var oldActivities = await _unitOfWork.Repository<Activity>()
                 .FindAsync(a => a.TripDayId == tripDay.Id);
 
@@ -634,19 +633,19 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 _unitOfWork.Repository<Activity>().Delete(act);
             }
 
-            await _unitOfWork.CompleteAsync(); // لازم هنا قبل البناء
+            await _unitOfWork.CompleteAsync(); 
 
-            // 5. جلب أماكن جديدة (بعد المسح)
+          
             var attractionsTask = SearchPlaces(trip.Destination, "attraction");
             var restaurantsTask = SearchPlaces(trip.Destination, "restaurant");
             var cafesTask = SearchPlaces(trip.Destination, "cafe");
 
             await Task.WhenAll(attractionsTask, restaurantsTask, cafesTask);
 
-            // 6. بناء أنشطة جديدة
+            
             var newActivities = new List<ActivityPlanDto>();
 
-            var usedPlaceIds = new HashSet<string>(); // مهم: يبدأ فاضي بعد المسح
+            var usedPlaceIds = new HashSet<string>(); 
 
             AddActivityIfAvailable(
                 newActivities,
@@ -672,13 +671,13 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 "Cafe",
                 dailyBudget * 0.3m);
 
-            // 7. لو مفيش بيانات
+            
             if (newActivities.Count == 0)
             {
                 return new List<ActivityPlanDto>();
             }
 
-            // 8. INSERT NEW ACTIVITIES
+           
             foreach (var activity in newActivities)
             {
                 _unitOfWork.Repository<Activity>().AddAsync(new Activity
@@ -882,7 +881,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
 
             await _unitOfWork.CompleteAsync();
 
-            return MapFlight(nextFlight);
+            return MapFlight(nextFlight,0);
         }
 
         public async Task<TripPlanDto> GetCurrentPlanAsync(Guid tripId)

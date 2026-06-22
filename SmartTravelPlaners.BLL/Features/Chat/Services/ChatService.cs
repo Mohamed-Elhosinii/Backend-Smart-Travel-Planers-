@@ -63,14 +63,11 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
             var history = new ChatHistory();
 
             history.AddSystemMessage(@" You are a smart travel assistant called TravelBot.
-<<<<<<< HEAD
-Talk to the user in Arabic only, in a friendly and natural way.
-Your job is to collect travel information from the user.
-=======
+
 Talk to the user in Arabic only, in a friendly and natural way. 
 Your job is to collect travel information from the user, and also help them
 modify an existing trip plan (hotel, activities, or basic trip fields).
->>>>>>> nourin
+
 
 When ALL required fields for a NEW trip are collected, respond ONLY with:
 
@@ -114,17 +111,17 @@ If the user already has a trip and wants to change ONE field, respond ONLY with:
 TRIP_UPDATE:{ ""field"": ""<destination|originCity|startDate|endDate|numTravelers|budgetTotal>"", ""value"": ""<new value>"" }
 
 Rules:
-<<<<<<< HEAD
+
 - When ready to create a trip, output ONLY the TRIP_READY format.
 - When updating an existing trip, output ONLY the TRIP_UPDATE format.
-=======
+
 - Always output ONLY one of the formats above when ready, nothing else.
->>>>>>> nourin
+
 - Do NOT output any other text alongside these formats.
 - Destination MUST be in English city name only (e.g., Paris, Dubai, Cairo).
 - Dates MUST be in yyyy-MM-dd format.
 - If information is missing, continue asking naturally in Arabic.
-<<<<<<< HEAD
+
 - Do NOT use multiple formats at once. ");
 
             // Let the model know whether a trip already exists so it picks TRIP_UPDATE vs TRIP_READY.
@@ -133,9 +130,7 @@ Rules:
                 history.AddSystemMessage(
                     "The user already has an active trip. If they want to change something, use TRIP_UPDATE (not TRIP_READY).");
             }
-=======
-- Do NOT mix multiple formats in one reply.");
->>>>>>> nourin
+
 
             foreach (var msg in session.Messages.OrderBy(m => m.CreatedAt))
             {
@@ -375,27 +370,7 @@ Rules:
      .Replace("TRIP_UPDATE:", "")
      .Trim();
 
-<<<<<<< HEAD
-                await UpdateTripFieldAsync(json, session.TripId);
-                await _chatRepo.SaveChangesAsync(); // persist the field change before rebuilding
 
-                session.Stage = ChatStage.Modifying;
-
-                // Rebuild the plan so the change (dates / budget / destination / ...) is reflected.
-                try
-                {
-                    plan = await _orchestrator.BuildTripPlanAsync(session.TripId.Value);
-                }
-                catch (Exception ex)
-                {
-                    plan = null;
-                    Console.WriteLine($"Orchestrator rebuild failed: {ex.Message}");
-                }
-
-                finalReply = plan != null
-                    ? "تم تحديث الرحلة وإعادة بناء الخطة بنجاح! " + plan.Summary
-                    : "تم تحديث الرحلة، لكن حصل مشكلة في إعادة بناء بعض تفاصيل الخطة.";
-=======
                 var changedField = await UpdateTripFieldAsync(json, session.TripId);
 
                 session.Stage = ChatStage.Modifying;
@@ -479,7 +454,7 @@ Rules:
                     Console.WriteLine($"GetCurrentPlanAsync failed: {ex.Message}");
                     plan = null;
                 }
->>>>>>> nourin
+
             }
            
             else
