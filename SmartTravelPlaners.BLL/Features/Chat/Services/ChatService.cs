@@ -153,9 +153,23 @@ Rules:
             TripPlanDto? plan = null;
 
             // =========================
+            // HELPER: extract JSON after keyword (handles text before keyword)
+            // =========================
+            static string? ExtractAfter(string input, string keyword)
+            {
+                var idx = input.IndexOf(keyword, StringComparison.Ordinal);
+                if (idx < 0) return null;
+                return input.Substring(idx + keyword.Length).Trim();
+            }
+
+            bool HasKeyword(string keyword) =>
+                rawReply.Contains(keyword, StringComparison.Ordinal);
+
+
+            // =========================
             // CREATE TRIP FLOW
             // =========================
-            if (rawReply.StartsWith("TRIP_READY:") && session.TripId == null)
+            if (HasKeyword("TRIP_READY:") && session.TripId == null)
             {
                 // ===========================
                 // USAGE LIMIT: Check trip limit before calling external APIs
@@ -169,7 +183,7 @@ Rules:
                     };
                 }
 
-                var json = rawReply.Substring("TRIP_READY:".Length).Trim();
+                var json = ExtractAfter(rawReply, "TRIP_READY:")!;
 
                 var trip = await CreateTripFromJsonAsync(json, session.UserId);
 
@@ -216,7 +230,7 @@ Rules:
             // =========================
             // View Trip
             // =========================
-            else if (rawReply.TrimStart().StartsWith("TRIP_SHOW:"))
+            else if (HasKeyword("TRIP_SHOW:"))
             {
                 if (session.TripId == null)
                 {
@@ -241,7 +255,7 @@ Rules:
             // =========================
             // UPDATE HOTEL FLOW
             // =========================
-            else if (rawReply.TrimStart().StartsWith("TRIP_UPDATE_HOTEL:"))
+            else if (HasKeyword("TRIP_UPDATE_HOTEL:"))
             {
                 if (session.TripId == null)
                 {
@@ -275,7 +289,7 @@ Rules:
             // =========================
             // UPDATE ACTIVITIES FLOW
             // =========================
-            else if (rawReply.TrimStart().StartsWith("TRIP_UPDATE_ACTIVITIES:"))
+            else if (HasKeyword("TRIP_UPDATE_ACTIVITIES:"))
             {
                 if (session.TripId == null)
                 {
@@ -286,7 +300,7 @@ Rules:
                     };
                 }
 
-                var json = rawReply.Replace("TRIP_UPDATE_ACTIVITIES:", "").Trim();
+                var json = ExtractAfter(rawReply, "TRIP_UPDATE_ACTIVITIES:")!;
                 var actOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
 
                 try
@@ -330,7 +344,7 @@ Rules:
             // =========================
             // UPDATE FLIGHT FLOW
             // =========================
-            else if (rawReply.TrimStart().StartsWith("TRIP_UPDATE_FLIGHT:"))
+            else if (HasKeyword("TRIP_UPDATE_FLIGHT:"))
             {
                 if (session.TripId == null)
                 {
@@ -364,8 +378,7 @@ Rules:
             // =========================
             // UPDATE SIMPLE FIELD FLOW
             // =========================
-            else if (rawReply.TrimStart().StartsWith("TRIP_UPDATE_FIELD:") ||
-                     rawReply.TrimStart().StartsWith("TRIP_UPDATE:"))
+            else if (HasKeyword("TRIP_UPDATE_FIELD:") || HasKeyword("TRIP_UPDATE:"))
             {
                 if (session.TripId == null)
                 {
@@ -376,10 +389,8 @@ Rules:
                     };
                 }
 
-                var json = rawReply
-     .Replace("TRIP_UPDATE_FIELD:", "")
-     .Replace("TRIP_UPDATE:", "")
-     .Trim();
+                var json = (ExtractAfter(rawReply, "TRIP_UPDATE_FIELD:") 
+                         ?? ExtractAfter(rawReply, "TRIP_UPDATE:"))!;
 
                 await UpdateTripFieldAsync(json, session.TripId);
                 await _chatRepo.SaveChangesAsync(); // persist the field change before rebuilding
@@ -457,12 +468,12 @@ Rules:
                     finalReply = "حصلت مشكلة في تحديث البيانات، ممكن تجرب تاني.";
                 }
             }
-           
             else
-                {
-                    finalReply = rawReply;
-                }
+            {
+                finalReply = rawReply;
+            }
             
+
 
             await _chatRepo.AddMessageAsync(new ChatMessage
             {
