@@ -17,7 +17,7 @@ using System.Text;
 
 namespace SmartTravelPlaners.BLL.Services.Concrete
 {
-    
+
     public class AuthService : IAuthService
     {
         private readonly UserManager<ApplicationUser> _userManager;
@@ -178,7 +178,7 @@ namespace SmartTravelPlaners.BLL.Services.Concrete
 
             var resetLink = $"https://yourdomain.com/reset-password?userId={user.Id}&token={encodedToken}";
 
-               var body = $@"
+            var body = $@"
            <h2>Reset Your Password</h2>
            <p>Click the link below to reset your password:</p>
            <a href='{resetLink}'>Reset Password</a>
@@ -217,7 +217,7 @@ namespace SmartTravelPlaners.BLL.Services.Concrete
                     FullName = fullName,
                     Email = email,
                     UserName = email,
-                    EmailConfirmed = true 
+                    EmailConfirmed = true
                 };
 
                 var result = await _userManager.CreateAsync(user);

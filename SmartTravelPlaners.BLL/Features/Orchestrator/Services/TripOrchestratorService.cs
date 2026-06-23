@@ -545,11 +545,15 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
 
             var hotels = TryDeserialize<List<GoogleHotelDto>>(filteredJson) ?? new();
 
-            if (hotels.Count <= 1)
+            if (hotels.Count == 0)
             {
                 var searchJson = await _hotelPlugin.SearchHotelsAsync(
                     trip.Destination, checkIn, checkOut, trip.NumTravelers, 0);
-                hotels = TryDeserialize<List<GoogleHotelDto>>(searchJson) ?? new();
+                var searchHotels = TryDeserialize<List<GoogleHotelDto>>(searchJson) ?? new();
+                if (searchHotels.Count > 0)
+                 {
+                    hotels = searchHotels;
+                }
             }
 
             var withinBudget = hotels

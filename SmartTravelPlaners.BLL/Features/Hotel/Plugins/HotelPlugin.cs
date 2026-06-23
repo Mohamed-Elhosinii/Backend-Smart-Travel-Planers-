@@ -24,6 +24,7 @@ namespace SmartTravelPlaners.BLL.Features.Hotel.Plugins
             [Description("Number of children")] int children = 0)
         {
             var hotels = await _hotelService.GetAvailableHotelsAsync(city, checkIn, checkOut, adults, children);
+            hotels ??= new();
 
             if (hotels.Count == 0)
                 return JsonSerializer.Serialize(new { message = "No hotels found for this search." });
