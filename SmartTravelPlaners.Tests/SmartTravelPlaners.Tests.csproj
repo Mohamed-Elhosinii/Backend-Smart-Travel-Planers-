@@ -25,6 +25,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SmartTravelPlaners.BLL\SmartTravelPlaners.BLL.csproj" />
+    <ProjectReference Include="..\SmartTravelPlaners.PL\SmartTravelPlaners.PL.csproj" />
   </ItemGroup>
 
 </Project>
