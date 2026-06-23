@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Facebook;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authorization;
@@ -128,13 +128,25 @@ namespace SmartTravelPlaners.PL.Controllers
         {
             var result = await HttpContext.AuthenticateAsync(GoogleDefaults.AuthenticationScheme);
             if (!result.Succeeded)
-                return BadRequest(new { message = "Google authentication failed" });
+            {
+                // Redirect to Angular with error
+                return Redirect("http://localhost:4200/auth/login?error=google_auth_failed");
+            }
 
             var email = result.Principal.FindFirstValue(ClaimTypes.Email)!;
             var fullName = result.Principal.FindFirstValue(ClaimTypes.Name)!;
 
             var response = await _authService.OAuthLoginAsync(email, fullName, "Google");
-            return Ok(response);
+
+            // Redirect back to Angular app with tokens in query params
+            var redirectUrl = $"http://localhost:4200/google-callback" +
+                              $"?userId={Uri.EscapeDataString(response.UserId)}" +
+                              $"&fullName={Uri.EscapeDataString(response.FullName)}" +
+                              $"&email={Uri.EscapeDataString(response.Email)}" +
+                              $"&accessToken={Uri.EscapeDataString(response.AccessToken)}" +
+                              $"&refreshToken={Uri.EscapeDataString(response.RefreshToken)}";
+
+            return Redirect(redirectUrl);
         }
 
     
