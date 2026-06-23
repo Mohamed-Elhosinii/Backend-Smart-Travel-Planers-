@@ -16,10 +16,12 @@ namespace SmartTravelPlaners.PL.Controllers
         public class AuthController : ControllerBase
         {
             private readonly IAuthService _authService;
+            private readonly IConfiguration _configuration;
 
-            public AuthController(IAuthService authService)
+            public AuthController(IAuthService authService, IConfiguration configuration)
             {
                 _authService = authService;
+                _configuration = configuration;
             }
 
             [HttpPost("register")]
@@ -135,7 +137,19 @@ namespace SmartTravelPlaners.PL.Controllers
             var fullName = result.Principal.FindFirstValue(ClaimTypes.Name)!;
 
             var response = await _authService.OAuthLoginAsync(email, fullName, "Google");
-            return Ok(response);
+
+            // OAuth lands in the browser via a redirect, so the SPA can't read a JSON
+            // body here. Redirect (302) back to the SPA's callback route with the tokens
+            // as query params — exactly what GoogleCallbackPage already reads.
+            // Frontend origin is sourced from config (Frontend:BaseUrl), never hardcoded.
+            var frontendBaseUrl = _configuration["Frontend:BaseUrl"];
+            var redirectUrl =
+                $"{frontendBaseUrl}/google-callback" +
+                $"?accessToken={Uri.EscapeDataString(response.AccessToken)}" +
+                $"&refreshToken={Uri.EscapeDataString(response.RefreshToken)}" +
+                $"&email={Uri.EscapeDataString(response.Email)}";
+
+            return Redirect(redirectUrl);
         }
 
     

@@ -31,6 +31,8 @@ using SmartTravelPlaners.BLL.Services.Concrete;
 using SmartTravelPlaners.BLL.Features.Subscription.Interfaces;
 using SmartTravelPlaners.BLL.Features.Subscription.Services;
 using SmartTravelPlaners.BLL.Features.Subscription.Settings;
+using SmartTravelPlaners.BLL.Features.Trips.Interfaces;
+using SmartTravelPlaners.BLL.Features.Trips.Services;
 using SmartTravelPlaners.DAL.Context;
 using SmartTravelPlaners.DAL.Entities;
 using SmartTravelPlaners.DAL.Repositories.Abstract;
@@ -221,8 +223,12 @@ namespace SmartTravelPlaners.PL
 
 
 
-            //orchestrator 
+            //orchestrator
             builder.Services.AddScoped<ITripOrchestratorService, TripOrchestratorService>();
+
+            // Shared trip-creation pipeline — used by BOTH the chat TRIP_READY handler
+            // and the form-driven POST /api/Trip/quick-plan endpoint.
+            builder.Services.AddScoped<ITripCreationService, TripCreationService>();
 
             // =======================================================
             // 10. SUBSCRIPTION & PAYMENTS (Paymob)
