@@ -16,10 +16,12 @@ namespace SmartTravelPlaners.PL.Controllers
         public class AuthController : ControllerBase
         {
             private readonly IAuthService _authService;
+            private readonly IConfiguration _configuration;
 
-            public AuthController(IAuthService authService)
+            public AuthController(IAuthService authService, IConfiguration configuration)
             {
                 _authService = authService;
+                _configuration = configuration;
             }
 
             [HttpPost("register")]
@@ -37,6 +39,7 @@ namespace SmartTravelPlaners.PL.Controllers
             }
 
             [HttpPost("login")]
+            [ProducesResponseType(typeof(AuthResponseDto), StatusCodes.Status200OK)]
             public async Task<IActionResult> Login([FromBody] LoginDto dto)
             {
                 try

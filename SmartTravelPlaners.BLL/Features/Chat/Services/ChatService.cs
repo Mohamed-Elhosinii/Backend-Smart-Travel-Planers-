@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
@@ -6,6 +7,7 @@ using SmartTravelPlaners.BLL.Features.Chat.Interfaces;
 using SmartTravelPlaners.BLL.Features.Orchestrator.DTOs;
 using SmartTravelPlaners.BLL.Features.Orchestrator.Interfaces;
 using SmartTravelPlaners.BLL.Features.Subscription.Interfaces;
+using SmartTravelPlaners.BLL.Features.Trips.Interfaces;
 using SmartTravelPlaners.DAL.Entities;
 using SmartTravelPlaners.DAL.Enums;
 using SmartTravelPlaners.DAL.Repositories.Abstract;
@@ -25,6 +27,8 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
         private readonly ITripOrchestratorService _orchestrator;
         private readonly IUsageLimitService _usageLimitService;
         private readonly IServiceProvider _serviceProvider;
+        private readonly IConfiguration _configuration;
+        private readonly ITripCreationService _tripCreationService;
 
         public ChatService(
             IChatRepository chatRepo,
@@ -34,6 +38,8 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
             ITripOrchestratorService orchestrator,
             IUsageLimitService usageLimitService,
             IServiceProvider serviceProvider,
+            IConfiguration configuration,
+            ITripCreationService tripCreationService,
             Kernel kernel)
         {
             _chatRepo = chatRepo;
@@ -44,13 +50,18 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
             _orchestrator = orchestrator;
             _usageLimitService = usageLimitService;
             _serviceProvider = serviceProvider;
+            _configuration = configuration;
+            _tripCreationService = tripCreationService;
         }
 
-        public async Task<ChatReplyDto> SendMessageAsync(Guid sessionId, string userMessage)
+        public async Task<ChatReplyDto> SendMessageAsync(Guid sessionId, string userId, string userMessage)
         {
             var session = await _chatRepo.GetSessionAsync(sessionId);
             if (session == null)
                 throw new Exception("Session not found");
+
+            if (session.UserId != userId)
+                throw new UnauthorizedAccessException("You do not have access to this session.");
 
             // ===========================
             // USAGE LIMIT: Check message limit before calling the AI
@@ -146,8 +157,36 @@ Rules:
                 CreatedAt = DateTime.UtcNow
             });
 
-            var result = await _ai.GetChatMessageContentAsync(history);
-            var rawReply = result.Content ?? "Sorry, unable to respond right now";
+            var apiKey = _configuration["GitHubModels:Token"];
+            var endpoint = _configuration["GitHubModels:Endpoint"];
+            var modelId = _configuration["GitHubModels:ModelId"];
+
+            if (string.IsNullOrWhiteSpace(apiKey))
+            {
+                throw new ArgumentNullException("GitHubModels:Token", "API Key is missing or empty in appsettings.json.");
+            }
+
+            Console.WriteLine("DEBUG BACKEND: Received message from user, initiating LLM call...");
+            Console.WriteLine($"DEBUG BACKEND: Hitting provider Endpoint: {endpoint} | ModelId: {modelId}");
+            Microsoft.SemanticKernel.ChatMessageContent result = null;
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            try
+            {
+                result = await _ai.GetChatMessageContentAsync(history, null, null, cts.Token);
+                Console.WriteLine("DEBUG BACKEND: LLM call completed successfully.");
+            }
+            catch (OperationCanceledException)
+            {
+                Console.WriteLine("DEBUG BACKEND ERROR: LLM call timed out after 15 seconds.");
+                return new ChatReplyDto { Message = "Sorry, the AI service took too long to respond. Please try again later." };
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"DEBUG BACKEND ERROR: LLM call failed or timed out: {ex.Message}");
+                return new ChatReplyDto { Message = "Sorry, the AI service is currently unavailable. Please try again later." };
+            }
+
+            var rawReply = result?.Content ?? "Sorry, unable to respond right now";
 
             string finalReply;
             TripPlanDto? plan = null;
@@ -171,60 +210,30 @@ Rules:
             // =========================
             if (HasKeyword("TRIP_READY:") && session.TripId == null)
             {
-                // ===========================
-                // USAGE LIMIT: Check trip limit before calling external APIs
-                // ===========================
-                var canTrip = await _usageLimitService.CanGenerateTripAsync(session.UserId);
-                if (!canTrip)
-                {
-                    return new ChatReplyDto
-                    {
-                        Message = "You've reached your monthly trip generation limit. Upgrade your plan to create more trips! 🚀"
-                    };
-                }
-
                 var json = ExtractAfter(rawReply, "TRIP_READY:")!;
 
-                var trip = await CreateTripFromJsonAsync(json, session.UserId);
+                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var dto = JsonSerializer.Deserialize<TripCreateDto>(json, options)
+                              ?? throw new Exception("Failed to parse trip data from AI");
 
-                if (trip == null)
+                // Shared create → background-build → usage pipeline
+                // (the SAME path as POST /api/Trip/quick-plan; one limit check, one
+                //  persistence path, one BuildTripPlanAsync, one usage increment).
+                var creationResult = await _tripCreationService.CreateAndBuildAsync(dto, session.UserId);
+
+                if (creationResult.LimitReached)
                 {
-                    return new ChatReplyDto
-                    {
-                        Message = "حصل مشكلة في إنشاء الرحلة، ممكن نجرب تاني؟"
-                    };
+                    return new ChatReplyDto { Message = creationResult.Message! };
                 }
 
+                var trip = creationResult.Trip!;
                 session.TripId = trip.Id;
                 session.Stage = ChatStage.PlanReady;
 
                 await _chatRepo.SaveChangesAsync();
 
-                // =========================
-                // BACKGROUND ORCHESTRATOR CALL
-                // =========================
-                var tripId = trip.Id;
-                var userId = session.UserId;
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        using var scope = _serviceProvider.CreateScope();
-                        var orchestrator = scope.ServiceProvider.GetRequiredService<ITripOrchestratorService>();
-                        var usageService = scope.ServiceProvider.GetRequiredService<IUsageLimitService>();
-                        
-                        await orchestrator.BuildTripPlanAsync(tripId);
-                        await usageService.IncrementTripUsageAsync(userId);
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"Orchestrator failed: {ex.Message}");
-                    }
-                });
-
                 finalReply = $"ممتاز! جاري تجهيز أفضل خطة لرحلتك إلى {trip.Destination} (من {trip.StartDate} إلى {trip.EndDate}). ثواني وهتكون جاهزة ✈️";
                 plan = null;
-
             }
 
             // =========================
@@ -493,66 +502,13 @@ Rules:
             return new ChatReplyDto
             {
                 Message = finalReply,
-                Plan = plan
+                Plan = plan,
+                TripId = session.TripId
             };
         }
 
         // =========================
-        // CREATE TRIP (unchanged)
-        // =========================
-        private async Task<Trip> CreateTripFromJsonAsync(string json, string userId)
-        {
-            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-
-            var data = JsonSerializer.Deserialize<TripCreateDto>(json, options)
-                          ?? throw new Exception("Failed to parse trip data from AI");
-
-            var profiles = await _userProfileRepo.FindAsync(p => p.AspNetUserId == userId);
-
-            var userProfile = profiles.FirstOrDefault()
-                              ?? throw new Exception("User profile not found");
-
-            if (!DateOnly.TryParse(data.StartDate, out var startDate))
-                throw new Exception("Invalid start date");
-
-            if (!DateOnly.TryParse(data.EndDate, out var endDate))
-                throw new Exception("Invalid end date");
-
-            if (!int.TryParse(data.NumTravelers.ToString(), out var travelers))
-                throw new Exception("Invalid travelers count");
-
-            if (!decimal.TryParse(data.BudgetTotal.ToString(), out var budget))
-                throw new Exception("Invalid budget");
-
-            var trip = new Trip
-            {
-                Id = Guid.NewGuid(),
-                UserId = userProfile.Id,
-                Title = $"Trip to {data.Destination}",
-                Destination = data.Destination,
-                OriginCity = data.OriginCity,
-                StartDate = startDate,
-                EndDate = endDate,
-                NumTravelers = travelers,
-                BudgetTotal = budget,
-                Status = TripStatus.Draft,
-                CreatedAt = DateTime.UtcNow,
-                Preferences = data.Preferences.Select(p => new TripPreference
-                {
-                    Id = Guid.NewGuid(),
-                    Category = "General",
-                    Value = p
-                }).ToList()
-            };
-
-            await _unitOfWork.Trips.AddAsync(trip);
-            await _unitOfWork.CompleteAsync();
-
-            return trip;
-        }
-
-        // =========================
-        // UPDATE TRIP 
+        // UPDATE TRIP
         // =========================
         private async Task<string?> UpdateTripFieldAsync(string json, Guid? tripId)
         {
@@ -609,8 +565,17 @@ Rules:
             return session;
         }
 
-        public async Task<List<ChatMessage>> GetHistoryAsync(Guid sessionId)
+        public async Task<List<ChatSession>> GetUserSessionsAsync(string userId)
         {
+            return await _chatRepo.GetSessionsByUserAsync(userId);
+        }
+
+        public async Task<List<ChatMessage>> GetHistoryAsync(Guid sessionId, string userId)
+        {
+            var session = await _chatRepo.GetSessionAsync(sessionId);
+            if (session == null || session.UserId != userId)
+                throw new UnauthorizedAccessException("You do not have access to this session.");
+
             return await _chatRepo.GetMessagesAsync(sessionId);
         }
 

@@ -35,15 +35,40 @@ namespace SmartTravelPlaners.PL.Controllers
             if (string.IsNullOrWhiteSpace(dto.Message))
                 return BadRequest("Message is empty");
 
-            var reply = await _chatService.SendMessageAsync(dto.SessionId, dto.Message);
-            return Ok(new { reply });
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (userId == null) return Unauthorized();
+
+            var reply = await _chatService.SendMessageAsync(dto.SessionId, userId, dto.Message);
+            return Ok(reply);
+        }
+
+        // GET api/chat/sessions
+        [HttpGet("sessions")]
+        public async Task<IActionResult> GetSessions()
+        {
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (userId == null) return Unauthorized();
+
+            var sessions = await _chatService.GetUserSessionsAsync(userId);
+            
+            // Map to a simpler DTO if needed, or return entities
+            var result = sessions.Select(s => new {
+                id = s.Id,
+                date = s.UpdatedAt.ToString("MMM dd, yyyy"),
+                title = s.TripId != null ? "Trip Details" : "New Journey"
+            });
+
+            return Ok(result);
         }
 
         // GET api/chat/history/{sessionId}
         [HttpGet("history/{sessionId}")]
         public async Task<IActionResult> GetHistory(Guid sessionId)
         {
-            var messages = await _chatService.GetHistoryAsync(sessionId);
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (userId == null) return Unauthorized();
+
+            var messages = await _chatService.GetHistoryAsync(sessionId, userId);
             return Ok(messages);
         }
 

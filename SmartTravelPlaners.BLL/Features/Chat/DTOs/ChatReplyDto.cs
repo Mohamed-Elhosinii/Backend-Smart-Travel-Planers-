@@ -1,4 +1,4 @@
-﻿using SmartTravelPlaners.BLL.Features.Orchestrator.DTOs;
+using SmartTravelPlaners.BLL.Features.Orchestrator.DTOs;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -9,5 +9,6 @@ namespace SmartTravelPlaners.BLL.Features.Chat.DTOs
     {
         public string Message { get; set; } = string.Empty;
         public TripPlanDto? Plan { get; set; }
+        public Guid? TripId { get; set; }
     }
 }
