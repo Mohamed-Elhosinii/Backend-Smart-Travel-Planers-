@@ -91,24 +91,77 @@ namespace SmartTravelPlaners.Tests.Features.Auth
         [Fact]
         public async Task RegisterAsync_ShouldCallEnsureDefaultSubscription_WhenSuccess()
         {
-            var dto = new RegisterDto { Email = "new@example.com", Password = "Pass123!", FullName = "Test" };
-            var user = MakeUser("new-user-id");
-            user.Email = dto.Email;
+          
+            var dto = new RegisterDto
+            {
+                Email = "new@example.com",
+                Password = "Pass123!",
+                FullName = "Test"
+            };
 
-            _userManagerMock.Setup(u => u.FindByEmailAsync(dto.Email)).ReturnsAsync((ApplicationUser?)null);
-            _userManagerMock.Setup(u => u.CreateAsync(It.IsAny<ApplicationUser>(), dto.Password))
+            ApplicationUser createdUser = null;
+
+            _userManagerMock
+                .Setup(u => u.FindByEmailAsync(dto.Email))
+                .ReturnsAsync((ApplicationUser?)null);
+
+            _userManagerMock
+                .Setup(u => u.CreateAsync(It.IsAny<ApplicationUser>(), It.IsAny<string>()))
+                .Callback<ApplicationUser, string>((user, password) =>
+                {
+                    user.Id = "test-user-id";   
+                    user.Email = dto.Email;
+                    user.FullName = dto.FullName;
+
+                    createdUser = user;
+                })
                 .ReturnsAsync(IdentityResult.Success);
-            _userManagerMock.Setup(u => u.FindByIdAsync(It.IsAny<string>())).ReturnsAsync(user);
-            _userManagerMock.Setup(u => u.GenerateEmailConfirmationTokenAsync(It.IsAny<ApplicationUser>()))
+
+            _userManagerMock
+                .Setup(u => u.GenerateEmailConfirmationTokenAsync(It.IsAny<ApplicationUser>()))
                 .ReturnsAsync("fake-token");
-            _emailMock.Setup(e => e.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
-                .Returns(Task.CompletedTask);
-            _subscriptionMock.Setup(s => s.EnsureDefaultSubscriptionAsync(It.IsAny<string>()))
+
+            _userManagerMock
+                .Setup(u => u.GetRolesAsync(It.IsAny<ApplicationUser>()))
+                .ReturnsAsync(new List<string>());
+
+            _userManagerMock
+                .Setup(u => u.FindByIdAsync("test-user-id"))
+                .ReturnsAsync(new ApplicationUser
+                {
+                    Id = "test-user-id",
+                    Email = dto.Email,
+                    FullName = dto.FullName
+                });
+
+            _emailMock
+                .Setup(e => e.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
                 .Returns(Task.CompletedTask);
 
-            await _service.RegisterAsync(dto);
+            _subscriptionMock
+                .Setup(s => s.EnsureDefaultSubscriptionAsync(It.IsAny<string>()))
+                .Returns(Task.CompletedTask);
 
-            _subscriptionMock.Verify(s => s.EnsureDefaultSubscriptionAsync(It.IsAny<string>()), Times.Once);
+          
+            var result = await _service.RegisterAsync(dto);
+
+           
+            Assert.NotNull(result);
+            Assert.Equal(dto.Email, result.Email);
+
+            Assert.NotNull(createdUser);
+            Assert.Equal("test-user-id", createdUser.Id);
+
+            _subscriptionMock.Verify(
+                s => s.EnsureDefaultSubscriptionAsync("test-user-id"),
+                Times.Once);
+
+            _emailMock.Verify(
+                e => e.SendEmailAsync(
+                    dto.Email,
+                    It.IsAny<string>(),
+                    It.IsAny<string>()),
+                Times.Once);
         }
 
         // ============================================================
@@ -138,15 +191,30 @@ namespace SmartTravelPlaners.Tests.Features.Auth
         [Fact]
         public async Task LoginAsync_ShouldReturnToken_WhenCredentialsValid()
         {
+           
             var dto = new LoginDto { Email = "test@example.com", Password = "Pass123!" };
             var user = MakeUser();
-            _userManagerMock.Setup(u => u.FindByEmailAsync(dto.Email)).ReturnsAsync(user);
-            _userManagerMock.Setup(u => u.CheckPasswordAsync(user, dto.Password)).ReturnsAsync(true);
 
+            _userManagerMock
+                .Setup(u => u.FindByEmailAsync(dto.Email))
+                .ReturnsAsync(user);
+
+            _userManagerMock
+                .Setup(u => u.CheckPasswordAsync(user, dto.Password))
+                .ReturnsAsync(true);
+
+            
+            _userManagerMock
+                .Setup(u => u.GetRolesAsync(user))
+                .ReturnsAsync(new List<string>());
+
+           
             var result = await _service.LoginAsync(dto);
 
+           
             Assert.NotNull(result);
             Assert.NotEmpty(result.AccessToken);
+            Assert.Equal(dto.Email, result.Email);
         }
 
         // ============================================================
@@ -243,14 +311,31 @@ namespace SmartTravelPlaners.Tests.Features.Auth
         [Fact]
         public async Task OAuthLoginAsync_ShouldCreateNewUser_WhenNotExists()
         {
-            _userManagerMock.Setup(u => u.FindByEmailAsync("oauth@example.com")).ReturnsAsync((ApplicationUser?)null);
-            _userManagerMock.Setup(u => u.CreateAsync(It.IsAny<ApplicationUser>()))
+         
+            var email = "oauth@example.com";
+            var fullName = "OAuth User";
+
+            _userManagerMock
+                .Setup(u => u.FindByEmailAsync(email))
+                .ReturnsAsync((ApplicationUser?)null);
+
+            _userManagerMock
+                .Setup(u => u.CreateAsync(It.IsAny<ApplicationUser>()))
                 .ReturnsAsync(IdentityResult.Success);
 
-            var result = await _service.OAuthLoginAsync("oauth@example.com", "OAuth User", "Google");
+            
+            _userManagerMock
+                .Setup(u => u.GetRolesAsync(It.IsAny<ApplicationUser>()))
+                .ReturnsAsync(new List<string>());
 
+            var result = await _service.OAuthLoginAsync(email, fullName, "Google");
+
+            
             Assert.NotNull(result);
+            Assert.Equal(email, result.Email);
+
             _userManagerMock.Verify(u => u.CreateAsync(It.IsAny<ApplicationUser>()), Times.Once);
+            _userManagerMock.Verify(u => u.FindByEmailAsync(email), Times.Once);
         }
     }
 }

@@ -23,6 +23,7 @@ namespace SmartTravelPlaners.Tests.Features.Chat
         private readonly Mock<ITripOrchestratorService> _orchestratorMock;
         private readonly Mock<IUsageLimitService> _usageLimitMock;
         private readonly Mock<IChatCompletionService> _aiMock;
+        private readonly Mock<IServiceProvider> _serviceProviderMock;
         private readonly ChatService _service;
 
         public ChatServiceTests()
@@ -34,10 +35,19 @@ namespace SmartTravelPlaners.Tests.Features.Chat
             _orchestratorMock = new Mock<ITripOrchestratorService>();
             _usageLimitMock = new Mock<IUsageLimitService>();
             _aiMock = new Mock<IChatCompletionService>();
+            _serviceProviderMock = new Mock<IServiceProvider>();
 
-           
-            var kernel = new Kernel();
-            kernel.Services.GetServices<IChatCompletionService>();
+            var scopeFactoryMock = new Mock<IServiceScopeFactory>();
+            var scopeMock = new Mock<IServiceScope>();
+
+            scopeMock.Setup(s => s.ServiceProvider).Returns(_serviceProviderMock.Object);
+            scopeFactoryMock.Setup(f => f.CreateScope()).Returns(scopeMock.Object);
+            _serviceProviderMock.Setup(s => s.GetService(typeof(IServiceScopeFactory)))
+                .Returns(scopeFactoryMock.Object);
+            _serviceProviderMock.Setup(s => s.GetService(typeof(ITripOrchestratorService)))
+                .Returns(_orchestratorMock.Object);
+            _serviceProviderMock.Setup(s => s.GetService(typeof(IUsageLimitService)))
+                .Returns(_usageLimitMock.Object);
 
             var kernelBuilder = Kernel.CreateBuilder();
             kernelBuilder.Services.AddSingleton(_aiMock.Object);
@@ -50,6 +60,7 @@ namespace SmartTravelPlaners.Tests.Features.Chat
                 _uowMock.Object,
                 _orchestratorMock.Object,
                 _usageLimitMock.Object,
+                _serviceProviderMock.Object,
                 builtKernel);
         }
 
@@ -105,7 +116,7 @@ namespace SmartTravelPlaners.Tests.Features.Chat
         }
 
         // ============================================================
-        // SendMessageAsync — Normal Reply (no special format)
+        // SendMessageAsync — Normal Reply
         // ============================================================
 
         [Fact]
@@ -140,7 +151,6 @@ namespace SmartTravelPlaners.Tests.Features.Chat
 
             var result = await _service.SendMessageAsync(session.Id, "غيرلي الفندق");
 
-            Assert.NotNull(result.Message);
             Assert.Contains("مفيش رحلة", result.Message);
         }
 
@@ -159,17 +169,11 @@ namespace SmartTravelPlaners.Tests.Features.Chat
             _chatRepoMock.Setup(r => r.AddMessageAsync(It.IsAny<ChatMessage>())).Returns(Task.CompletedTask);
             _chatRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
 
-            _orchestratorMock.Setup(o => o.RegenerateHotelAsync(tripId))
-                .ReturnsAsync(new TripHotelDto { Name = "New Hotel" });
-            _orchestratorMock.Setup(o => o.GetCurrentPlanAsync(tripId))
-                .ReturnsAsync(new TripPlanDto());
-
             SetupAiReply("TRIP_UPDATE_HOTEL:{}");
 
             var result = await _service.SendMessageAsync(session.Id, "غيرلي الفندق");
 
-            Assert.Contains("New Hotel", result.Message);
-            _orchestratorMock.Verify(o => o.RegenerateHotelAsync(tripId), Times.Once);
+            Assert.Contains("جاري", result.Message);
         }
 
         // ============================================================
@@ -205,17 +209,11 @@ namespace SmartTravelPlaners.Tests.Features.Chat
             _chatRepoMock.Setup(r => r.AddMessageAsync(It.IsAny<ChatMessage>())).Returns(Task.CompletedTask);
             _chatRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
 
-            _orchestratorMock.Setup(o => o.RegenerateFlightAsync(tripId))
-                .ReturnsAsync(new TripFlightDto { AirlineName = "EgyptAir", FlightNumber = "MS700" });
-            _orchestratorMock.Setup(o => o.GetCurrentPlanAsync(tripId))
-                .ReturnsAsync(new TripPlanDto());
-
             SetupAiReply("TRIP_UPDATE_FLIGHT:{}");
 
             var result = await _service.SendMessageAsync(session.Id, "غيرلي الطيران");
 
-            Assert.Contains("EgyptAir", result.Message);
-            _orchestratorMock.Verify(o => o.RegenerateFlightAsync(tripId), Times.Once);
+            Assert.Contains("جاري", result.Message);
         }
 
         // ============================================================
@@ -289,6 +287,35 @@ namespace SmartTravelPlaners.Tests.Features.Chat
 
             Assert.Single(result);
             Assert.Equal("مرحبا", result[0].Content);
+        }
+
+        // ============================================================
+        // GetTripPlanAsync
+        // ============================================================
+
+        [Fact]
+        public async Task GetTripPlanAsync_ShouldReturnPlan_WhenExists()
+        {
+            var tripId = Guid.NewGuid();
+            _orchestratorMock.Setup(o => o.GetCurrentPlanAsync(tripId))
+                .ReturnsAsync(new TripPlanDto { TripId = tripId, Destination = "Paris" });
+
+            var result = await _service.GetTripPlanAsync(tripId);
+
+            Assert.NotNull(result);
+            Assert.Equal("Paris", result!.Destination);
+        }
+
+        [Fact]
+        public async Task GetTripPlanAsync_ShouldReturnNull_WhenThrows()
+        {
+            var tripId = Guid.NewGuid();
+            _orchestratorMock.Setup(o => o.GetCurrentPlanAsync(tripId))
+                .ThrowsAsync(new Exception("Not found"));
+
+            var result = await _service.GetTripPlanAsync(tripId);
+
+            Assert.Null(result);
         }
     }
 }
