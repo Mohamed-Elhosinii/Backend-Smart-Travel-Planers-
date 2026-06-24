@@ -145,9 +145,10 @@ namespace SmartTravelPlaners.Tests.Features.Auth
           
             var result = await _service.RegisterAsync(dto);
 
-           
+
             Assert.NotNull(result);
-            Assert.Equal(dto.Email, result.Email);
+          
+            Assert.Equal("test-user-id", result);
 
             Assert.NotNull(createdUser);
             Assert.Equal("test-user-id", createdUser.Id);
@@ -249,8 +250,8 @@ namespace SmartTravelPlaners.Tests.Features.Auth
         [Fact]
         public async Task ResetPasswordAsync_ShouldThrow_WhenUserNotFound()
         {
-            var dto = new ResetPasswordDto { UserId = "fake-id", Token = "fake-token", NewPassword = "NewPass123!" };
-            _userManagerMock.Setup(u => u.FindByIdAsync(dto.UserId)).ReturnsAsync((ApplicationUser?)null);
+            var dto = new ResetPasswordDto { Email = "fake@example.com", Token = "fake-token", NewPassword = "NewPass123!", ConfirmPassword = "NewPass123!" };
+            _userManagerMock.Setup(u => u.FindByEmailAsync(dto.Email)).ReturnsAsync((ApplicationUser?)null);
 
             await Assert.ThrowsAsync<Exception>(() => _service.ResetPasswordAsync(dto));
         }

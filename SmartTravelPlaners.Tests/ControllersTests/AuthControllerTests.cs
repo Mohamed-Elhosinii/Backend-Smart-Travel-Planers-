@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using Moq;
 using SmartTravelPlaners.BLL.DTOs.Auth;
 using SmartTravelPlaners.BLL.Services.Abstract;
@@ -12,12 +13,14 @@ namespace SmartTravelPlaners.Tests.Controllers
     public class AuthControllerTests
     {
         private readonly Mock<IAuthService> _serviceMock;
+        private readonly Mock<IConfiguration> _configMock;
         private readonly AuthController _controller;
 
         public AuthControllerTests()
         {
             _serviceMock = new Mock<IAuthService>();
-            _controller = new AuthController(_serviceMock.Object);
+            _configMock = new Mock<IConfiguration>();
+            _controller = new AuthController(_serviceMock.Object, _configMock.Object);
         }
 
         private void SetupUser(string userId = "user-1")
@@ -50,7 +53,7 @@ namespace SmartTravelPlaners.Tests.Controllers
         public async Task Register_ShouldReturn200_WhenSuccess()
         {
             var dto = new RegisterDto { Email = "test@example.com", Password = "Pass123!", FullName = "Test" };
-            _serviceMock.Setup(s => s.RegisterAsync(dto)).ReturnsAsync(MakeAuthResponse());
+            _serviceMock.Setup(s => s.RegisterAsync(dto)).ReturnsAsync("user-1");
 
             var result = await _controller.Register(dto) as OkObjectResult;
 
@@ -132,6 +135,7 @@ namespace SmartTravelPlaners.Tests.Controllers
         [Fact]
         public async Task Logout_ShouldReturn200_WhenSuccess()
         {
+            SetupUser();
             _serviceMock.Setup(s => s.LogoutAsync("valid-token")).ReturnsAsync(true);
 
             var result = await _controller.Logout("valid-token") as OkObjectResult;
@@ -143,6 +147,7 @@ namespace SmartTravelPlaners.Tests.Controllers
         [Fact]
         public async Task Logout_ShouldReturn400_WhenTokenInvalid()
         {
+            SetupUser();
             _serviceMock.Setup(s => s.LogoutAsync("invalid-token")).ReturnsAsync(false);
 
             var result = await _controller.Logout("invalid-token") as BadRequestObjectResult;
@@ -198,11 +203,10 @@ namespace SmartTravelPlaners.Tests.Controllers
         // ============================================================
         // ResetPassword
         // ============================================================
-
         [Fact]
         public async Task ResetPassword_ShouldReturn200_WhenSuccess()
         {
-            var dto = new ResetPasswordDto { UserId = "user-1", Token = "valid-token", NewPassword = "NewPass123!" };
+            var dto = new ResetPasswordDto { Email = "test@example.com", Token = "valid-token", NewPassword = "NewPass123!", ConfirmPassword = "NewPass123!" };
             _serviceMock.Setup(s => s.ResetPasswordAsync(dto)).ReturnsAsync(true);
 
             var result = await _controller.ResetPassword(dto) as OkObjectResult;
@@ -211,10 +215,12 @@ namespace SmartTravelPlaners.Tests.Controllers
             Assert.Equal(200, result!.StatusCode);
         }
 
+        
+
         [Fact]
-        public async Task ResetPassword_ShouldReturn400_WhenFails()
+        public async Task ResetPassword_ShouldReturn400_WhenThrows()
         {
-            var dto = new ResetPasswordDto { UserId = "user-1", Token = "invalid", NewPassword = "weak" };
+            var dto = new ResetPasswordDto { Email = "test@example.com", Token = "bad", NewPassword = "weak", ConfirmPassword = "weak" };
             _serviceMock.Setup(s => s.ResetPasswordAsync(dto)).ThrowsAsync(new Exception("Reset failed"));
 
             var result = await _controller.ResetPassword(dto) as BadRequestObjectResult;

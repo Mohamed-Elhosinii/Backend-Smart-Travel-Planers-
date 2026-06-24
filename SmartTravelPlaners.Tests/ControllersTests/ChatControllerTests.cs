@@ -95,8 +95,9 @@ namespace SmartTravelPlaners.Tests.Controllers
         [Fact]
         public async Task Send_ShouldReturn200_WhenSuccess()
         {
+            SetupUser("user-1");
             var sessionId = Guid.NewGuid();
-            _serviceMock.Setup(s => s.SendMessageAsync(sessionId,  "مرحبا"))
+            _serviceMock.Setup(s => s.SendMessageAsync(sessionId, "user-1", "مرحبا"))
                 .ReturnsAsync(new ChatReplyDto { Message = "أهلاً!" });
 
             var result = await _controller.Send(new SendMessageDto
@@ -112,16 +113,16 @@ namespace SmartTravelPlaners.Tests.Controllers
         // ============================================================
         // GetHistory
         // ============================================================
-
         [Fact]
         public async Task GetHistory_ShouldReturn200_WithMessages()
         {
+            SetupUser("user-1");
             var sessionId = Guid.NewGuid();
-            _serviceMock.Setup(s => s.GetHistoryAsync(sessionId))
+            _serviceMock.Setup(s => s.GetHistoryAsync(sessionId, "user-1"))
                 .ReturnsAsync(new List<ChatMessage>
                 {
-                    new() { Id = Guid.NewGuid(), SessionId = sessionId,
-                            Role = MessageRole.User, Content = "مرحبا" }
+            new() { Id = Guid.NewGuid(), SessionId = sessionId,
+                    Role = MessageRole.User, Content = "مرحبا" }
                 });
 
             var result = await _controller.GetHistory(sessionId) as OkObjectResult;
@@ -133,8 +134,9 @@ namespace SmartTravelPlaners.Tests.Controllers
         [Fact]
         public async Task GetHistory_ShouldReturn200_WhenEmpty()
         {
+            SetupUser("user-1");
             var sessionId = Guid.NewGuid();
-            _serviceMock.Setup(s => s.GetHistoryAsync(sessionId))
+            _serviceMock.Setup(s => s.GetHistoryAsync(sessionId, "user-1"))
                 .ReturnsAsync(new List<ChatMessage>());
 
             var result = await _controller.GetHistory(sessionId) as OkObjectResult;

@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Moq;
@@ -7,6 +8,7 @@ using SmartTravelPlaners.BLL.Features.Chat.Services;
 using SmartTravelPlaners.BLL.Features.Orchestrator.DTOs;
 using SmartTravelPlaners.BLL.Features.Orchestrator.Interfaces;
 using SmartTravelPlaners.BLL.Features.Subscription.Interfaces;
+using SmartTravelPlaners.BLL.Features.Trips.Interfaces;
 using SmartTravelPlaners.DAL.Entities;
 using SmartTravelPlaners.DAL.Enums;
 using SmartTravelPlaners.DAL.Repositories.Abstract;
@@ -36,6 +38,8 @@ namespace SmartTravelPlaners.Tests.Features.Chat
             _usageLimitMock = new Mock<IUsageLimitService>();
             _aiMock = new Mock<IChatCompletionService>();
             _serviceProviderMock = new Mock<IServiceProvider>();
+            var _configMock = new Mock<IConfiguration>();
+            var _tripCreationMock = new Mock<ITripCreationService>();
 
             var scopeFactoryMock = new Mock<IServiceScopeFactory>();
             var scopeMock = new Mock<IServiceScope>();
@@ -49,6 +53,10 @@ namespace SmartTravelPlaners.Tests.Features.Chat
             _serviceProviderMock.Setup(s => s.GetService(typeof(IUsageLimitService)))
                 .Returns(_usageLimitMock.Object);
 
+            _configMock.Setup(c => c["GitHubModels:Token"]).Returns("fake-api-key");
+            _configMock.Setup(c => c["GitHubModels:Endpoint"]).Returns("https://fake-endpoint.com");
+            _configMock.Setup(c => c["GitHubModels:ModelId"]).Returns("fake-model");
+
             var kernelBuilder = Kernel.CreateBuilder();
             kernelBuilder.Services.AddSingleton(_aiMock.Object);
             var builtKernel = kernelBuilder.Build();
@@ -61,6 +69,8 @@ namespace SmartTravelPlaners.Tests.Features.Chat
                 _orchestratorMock.Object,
                 _usageLimitMock.Object,
                 _serviceProviderMock.Object,
+                _configMock.Object,
+                _tripCreationMock.Object,
                 builtKernel);
         }
 
@@ -96,7 +106,7 @@ namespace SmartTravelPlaners.Tests.Features.Chat
             var sessionId = Guid.NewGuid();
             _chatRepoMock.Setup(r => r.GetSessionAsync(sessionId)).ReturnsAsync((ChatSession?)null);
 
-            await Assert.ThrowsAsync<Exception>(() => _service.SendMessageAsync(sessionId, "مرحبا"));
+            await Assert.ThrowsAsync<Exception>(() => _service.SendMessageAsync(sessionId, "user-1", "مرحبا"));
         }
 
         // ============================================================
@@ -110,7 +120,7 @@ namespace SmartTravelPlaners.Tests.Features.Chat
             _chatRepoMock.Setup(r => r.GetSessionAsync(session.Id)).ReturnsAsync(session);
             _usageLimitMock.Setup(u => u.CanSendMessageAsync(session.UserId)).ReturnsAsync(false);
 
-            var result = await _service.SendMessageAsync(session.Id, "مرحبا");
+            var result = await _service.SendMessageAsync(session.Id, session.UserId, "مرحبا");
 
             Assert.Contains("limit", result.Message, StringComparison.OrdinalIgnoreCase);
         }
@@ -131,7 +141,7 @@ namespace SmartTravelPlaners.Tests.Features.Chat
 
             SetupAiReply("أهلاً! ازيك؟");
 
-            var result = await _service.SendMessageAsync(session.Id, "مرحبا");
+            var result = await _service.SendMessageAsync(session.Id, session.UserId, "مرحبا");
 
             Assert.Equal("أهلاً! ازيك؟", result.Message);
         }
@@ -149,7 +159,7 @@ namespace SmartTravelPlaners.Tests.Features.Chat
 
             SetupAiReply("TRIP_UPDATE_HOTEL:{}");
 
-            var result = await _service.SendMessageAsync(session.Id, "غيرلي الفندق");
+            var result = await _service.SendMessageAsync(session.Id, session.UserId,"غيرلي الفندق");
 
             Assert.Contains("مفيش رحلة", result.Message);
         }
@@ -171,7 +181,7 @@ namespace SmartTravelPlaners.Tests.Features.Chat
 
             SetupAiReply("TRIP_UPDATE_HOTEL:{}");
 
-            var result = await _service.SendMessageAsync(session.Id, "غيرلي الفندق");
+            var result = await _service.SendMessageAsync(session.Id, session.UserId,  "غيرلي الفندق");
 
             Assert.Contains("جاري", result.Message);
         }
@@ -189,7 +199,7 @@ namespace SmartTravelPlaners.Tests.Features.Chat
 
             SetupAiReply("TRIP_UPDATE_FLIGHT:{}");
 
-            var result = await _service.SendMessageAsync(session.Id, "غيرلي الطيران");
+            var result = await _service.SendMessageAsync(session.Id, session.UserId,  "غيرلي الطيران");
 
             Assert.Contains("مفيش رحلة", result.Message);
         }
@@ -211,7 +221,7 @@ namespace SmartTravelPlaners.Tests.Features.Chat
 
             SetupAiReply("TRIP_UPDATE_FLIGHT:{}");
 
-            var result = await _service.SendMessageAsync(session.Id, "غيرلي الطيران");
+            var result = await _service.SendMessageAsync(session.Id, session.UserId,  "غيرلي الطيران");
 
             Assert.Contains("جاري", result.Message);
         }
@@ -229,7 +239,7 @@ namespace SmartTravelPlaners.Tests.Features.Chat
 
             SetupAiReply("TRIP_SHOW:{}");
 
-            var result = await _service.SendMessageAsync(session.Id, "ابعت الرحلة");
+            var result = await _service.SendMessageAsync(session.Id, session.UserId,"ابعت الرحلة");
 
             Assert.Contains("مفيش رحلة", result.Message);
         }
@@ -247,7 +257,7 @@ namespace SmartTravelPlaners.Tests.Features.Chat
 
             SetupAiReply("TRIP_UPDATE_ACTIVITIES:{\"dayNumber\": 1}");
 
-            var result = await _service.SendMessageAsync(session.Id, "غيرلي أنشطة يوم 1");
+            var result = await _service.SendMessageAsync(session.Id, session.UserId,  "غيرلي أنشطة يوم 1");
 
             Assert.Contains("مفيش رحلة", result.Message);
         }
@@ -272,18 +282,20 @@ namespace SmartTravelPlaners.Tests.Features.Chat
         // ============================================================
         // GetHistoryAsync
         // ============================================================
-
         [Fact]
         public async Task GetHistoryAsync_ShouldReturnMessages()
         {
             var sessionId = Guid.NewGuid();
+            var session = new ChatSession { Id = sessionId, UserId = "user-1" };
             var messages = new List<ChatMessage>
-            {
-                new() { Id = Guid.NewGuid(), SessionId = sessionId, Role = MessageRole.User, Content = "مرحبا" }
-            };
+    {
+        new() { Id = Guid.NewGuid(), SessionId = sessionId, Role = MessageRole.User, Content = "مرحبا" }
+    };
+
+            _chatRepoMock.Setup(r => r.GetSessionAsync(sessionId)).ReturnsAsync(session);
             _chatRepoMock.Setup(r => r.GetMessagesAsync(sessionId)).ReturnsAsync(messages);
 
-            var result = await _service.GetHistoryAsync(sessionId);
+            var result = await _service.GetHistoryAsync(sessionId, "user-1");
 
             Assert.Single(result);
             Assert.Equal("مرحبا", result[0].Content);
