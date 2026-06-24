@@ -8,6 +8,7 @@ using SmartTravelPlaners.DAL.Enums;
 using SmartTravelPlaners.PL.Controllers;
 using System.Security.Claims;
 using Xunit;
+using static Microsoft.ApplicationInsights.MetricDimensionNames.TelemetryContext;
 
 namespace SmartTravelPlaners.Tests.Controllers
 {
@@ -95,7 +96,7 @@ namespace SmartTravelPlaners.Tests.Controllers
         public async Task Send_ShouldReturn200_WhenSuccess()
         {
             var sessionId = Guid.NewGuid();
-            _serviceMock.Setup(s => s.SendMessageAsync(sessionId, "مرحبا"))
+            _serviceMock.Setup(s => s.SendMessageAsync(sessionId,  "مرحبا"))
                 .ReturnsAsync(new ChatReplyDto { Message = "أهلاً!" });
 
             var result = await _controller.Send(new SendMessageDto
