@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using SmartTravelPlaners.DAL.Context;
 using SmartTravelPlaners.DAL.Entities;
 using SmartTravelPlaners.DAL.Enums;
@@ -30,6 +30,14 @@ namespace SmartTravelPlaners.DAL.Repositories.Concrete
                 .OrderByDescending(s => s.CreatedAt)
                 .FirstOrDefaultAsync();
         }
+
+        public async Task<List<ChatSession>> GetSessionsByUserAsync(string userId)
+        {
+            return await _context.ChatSessions
+                .Where(s => s.UserId == userId)
+                .OrderByDescending(s => s.UpdatedAt)
+                .ToListAsync();
+        }
         // create a new session without a trip - trip gets linked later
         public async Task<ChatSession> CreateSessionAsync(string userId)
         {
@@ -48,7 +56,11 @@ namespace SmartTravelPlaners.DAL.Repositories.Concrete
 
         public async Task<List<ChatMessage>> GetMessagesAsync(Guid sessionId)
         {
+            // AsNoTracking → returns standalone messages with the Session nav left null,
+            // avoiding the ChatMessage.Session ↔ ChatSession.Messages serialization cycle
+            // (the ownership check in GetHistoryAsync otherwise tracks & fixes up Session).
             return await _context.ChatMessages
+                .AsNoTracking()
                 .Where(m => m.SessionId == sessionId)
                 .OrderBy(m => m.CreatedAt)
                 .ToListAsync();

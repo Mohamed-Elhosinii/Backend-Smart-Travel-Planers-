@@ -6,11 +6,13 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Interfaces
 {
     public interface IChatService
     {
-        Task<ChatReplyDto> SendMessageAsync(Guid sessionId, string userMessage);
+        Task<ChatReplyDto> SendMessageAsync(Guid sessionId, string userId, string userMessage);
 
         Task<ChatSession> CreateSessionAsync(string userId);
 
-        Task<List<ChatMessage>> GetHistoryAsync(Guid sessionId);
+        Task<List<ChatSession>> GetUserSessionsAsync(string userId);
+
+        Task<List<ChatMessage>> GetHistoryAsync(Guid sessionId, string userId);
 
         Task<TripPlanDto?> GetTripPlanAsync(Guid tripId);
     }

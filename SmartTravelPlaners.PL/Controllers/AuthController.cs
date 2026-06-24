@@ -4,112 +4,159 @@ using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SmartTravelPlaners.BLL.DTOs.Auth;
+using SmartTravelPlaners.BLL.DTOs.Common;
 using SmartTravelPlaners.BLL.Services.Abstract;
 using System.Security.Claims;
 
 namespace SmartTravelPlaners.PL.Controllers
 {
- 
-       
-        [ApiController]
-        [Route("api/[controller]")]
-        public class AuthController : ControllerBase
+    [ApiController]
+    [Route("api/[controller]")]
+    public class AuthController : ControllerBase
+    {
+        private readonly IAuthService _authService;
+        private readonly IConfiguration _configuration;
+
+        public AuthController(IAuthService authService, IConfiguration configuration)
         {
-            private readonly IAuthService _authService;
+            _authService = authService;
+            _configuration = configuration;
+        }
 
-            public AuthController(IAuthService authService)
+        [HttpPost("register")]
+        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> Register([FromBody] RegisterDto dto)
+        {
+            try
             {
-                _authService = authService;
+                var result = await _authService.RegisterAsync(dto);
+                return Ok(ApiResponse<string>.Success(result, "Registration successful. Please confirm your email."));
             }
-
-            [HttpPost("register")]
-            public async Task<IActionResult> Register([FromBody] RegisterDto dto)
+            catch (Exception ex)
             {
-                try
-                {
-                    var result = await _authService.RegisterAsync(dto);
-                    return Ok(result);
-                }
-                catch (Exception ex)
-                {
-                    return BadRequest(new { message = ex.Message });
-                }
+                return BadRequest(ApiResponse.Failure(ex.Message));
             }
+        }
 
-            [HttpPost("login")]
-            public async Task<IActionResult> Login([FromBody] LoginDto dto)
+        [HttpPost("login")]
+        [ProducesResponseType(typeof(ApiResponse<AuthResponseDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> Login([FromBody] LoginDto dto)
+        {
+            try
             {
-                try
-                {
-                    var result = await _authService.LoginAsync(dto);
-                    return Ok(result);
-                }
-                catch (Exception ex)
-                {
-                    return BadRequest(new { message = ex.Message });
-                }
+                var result = await _authService.LoginAsync(dto);
+                return Ok(ApiResponse<AuthResponseDto>.Success(result, "Login successful"));
             }
-
-            [HttpPost("refresh-token")]
-            public async Task<IActionResult> RefreshToken([FromBody] string refreshToken)
+            catch (Exception ex)
             {
-                try
-                {
-                    var result = await _authService.RefreshTokenAsync(refreshToken);
-                    return Ok(result);
-                }
-                catch (Exception ex)
-                {
-                    return BadRequest(new { message = ex.Message });
-                }
+                return BadRequest(ApiResponse.Failure(ex.Message));
             }
+        }
 
-            [HttpPost("logout")]
-            [Authorize]
-            public async Task<IActionResult> Logout([FromBody] string refreshToken)
+        [HttpPost("refresh-token")]
+        [ProducesResponseType(typeof(ApiResponse<AuthResponseDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> RefreshToken([FromBody] string refreshToken)
+        {
+            try
+            {
+                var result = await _authService.RefreshTokenAsync(refreshToken);
+                return Ok(ApiResponse<AuthResponseDto>.Success(result, "Token refreshed successfully"));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse.Failure(ex.Message));
+            }
+        }
+
+        [HttpPost("logout")]
+        [Authorize]
+        [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> Logout([FromBody] string refreshToken)
+        {
+            try
             {
                 var result = await _authService.LogoutAsync(refreshToken);
                 if (!result)
-                    return BadRequest(new { message = "Invalid token" });
+                    return BadRequest(ApiResponse.Failure("Invalid token"));
 
-                return Ok(new { message = "Logged out successfully" });
+                return Ok(ApiResponse.Success("Logged out successfully"));
             }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse.Failure(ex.Message));
+            }
+        }
 
-        [HttpGet("confirm-email")]
-        public async Task<IActionResult> ConfirmEmail([FromQuery] ConfirmEmailDto dto)
+        [HttpPost("confirm-email")]
+        [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> ConfirmEmail([FromBody] ConfirmEmailDto dto)
         {
             try
             {
                 var result = await _authService.ConfirmEmailAsync(dto);
-                if (!result) return BadRequest(new { message = "Email confirmation failed" });
-                return Ok(new { message = "Email confirmed successfully" });
+                if (!result) 
+                    return BadRequest(ApiResponse.Failure("Email confirmation failed"));
+                return Ok(ApiResponse.Success("Email confirmed successfully"));
             }
             catch (Exception ex)
             {
-                return BadRequest(new { message = ex.Message });
+                return BadRequest(ApiResponse.Failure(ex.Message));
+            }
+        }
+
+        [HttpPost("resend-confirm-email")]
+        [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> ResendConfirmEmail([FromBody] ConfirmEmailDto dto) // we only really need UserId, but we can reuse the DTO and ignore Token
+        {
+            try
+            {
+                await _authService.SendConfirmEmailAsync(dto.UserId);
+                return Ok(ApiResponse.Success("A new confirmation code has been sent to your email."));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse.Failure(ex.Message));
             }
         }
 
         [HttpPost("forgot-password")]
+        [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordDto dto)
         {
-            await _authService.SendForgotPasswordEmailAsync(dto);
-            return Ok(new { message = "If this email exists, a reset link has been sent" });
+            try
+            {
+                await _authService.SendForgotPasswordEmailAsync(dto);
+                return Ok(ApiResponse.Success("If this email exists, a reset link has been sent"));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse.Failure(ex.Message));
+            }
         }
 
         [HttpPost("reset-password")]
+        [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordDto dto)
         {
             try
             {
                 var result = await _authService.ResetPasswordAsync(dto);
-                return Ok(new { message = "Password reset successfully" });
+                return Ok(ApiResponse.Success("Password reset successfully"));
             }
             catch (Exception ex)
             {
-                return BadRequest(new { message = ex.Message });
+                return BadRequest(ApiResponse.Failure(ex.Message));
             }
         }
+
         // ============================================================
         // GOOGLE
         // ============================================================
@@ -126,47 +173,52 @@ namespace SmartTravelPlaners.PL.Controllers
         [HttpGet("google-callback")]
         public async Task<IActionResult> GoogleCallback()
         {
-            var result = await HttpContext.AuthenticateAsync(GoogleDefaults.AuthenticationScheme);
-            if (!result.Succeeded)
+            try
             {
-                // Redirect to Angular with error
+                var result = await HttpContext.AuthenticateAsync(GoogleDefaults.AuthenticationScheme);
+                if (!result.Succeeded)
+                {
+                    // Redirect to Angular with error
+                    return Redirect("http://localhost:4200/auth/login?error=google_auth_failed");
+                }
+
+                var email = result.Principal.FindFirstValue(ClaimTypes.Email)!;
+                var fullName = result.Principal.FindFirstValue(ClaimTypes.Name)!;
+
+                var response = await _authService.OAuthLoginAsync(email, fullName, "Google");
+
+                // Redirect back to Angular app with tokens in query params
+                var redirectUrl = $"http://localhost:4200/google-callback" +
+                                  $"?userId={Uri.EscapeDataString(response.UserId)}" +
+                                  $"{(!string.IsNullOrEmpty(response.FullName) ? $"&fullName={Uri.EscapeDataString(response.FullName)}" : "")}" +
+                                  $"&email={Uri.EscapeDataString(response.Email)}" +
+                                  $"&accessToken={Uri.EscapeDataString(response.AccessToken)}" +
+                                  $"&refreshToken={Uri.EscapeDataString(response.RefreshToken)}";
+
+                return Redirect(redirectUrl);
+            }
+            catch
+            {
                 return Redirect("http://localhost:4200/auth/login?error=google_auth_failed");
             }
-
-            var email = result.Principal.FindFirstValue(ClaimTypes.Email)!;
-            var fullName = result.Principal.FindFirstValue(ClaimTypes.Name)!;
-
-            var response = await _authService.OAuthLoginAsync(email, fullName, "Google");
-
-            // Redirect back to Angular app with tokens in query params
-            var redirectUrl = $"http://localhost:4200/google-callback" +
-                              $"?userId={Uri.EscapeDataString(response.UserId)}" +
-                              $"&fullName={Uri.EscapeDataString(response.FullName)}" +
-                              $"&email={Uri.EscapeDataString(response.Email)}" +
-                              $"&accessToken={Uri.EscapeDataString(response.AccessToken)}" +
-                              $"&refreshToken={Uri.EscapeDataString(response.RefreshToken)}";
-
-            return Redirect(redirectUrl);
         }
-
-    
 
         [HttpGet("me")]
         [Authorize]
+        [ProducesResponseType(typeof(ApiResponse<UserProfileDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> GetCurrentUser()
         {
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
             try
             {
+                var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
                 var result = await _authService.GetCurrentUserAsync(userId!);
-                return Ok(result);
+                return Ok(ApiResponse<UserProfileDto>.Success(result));
             }
             catch (Exception ex)
             {
-                return BadRequest(new { message = ex.Message });
+                return BadRequest(ApiResponse.Failure(ex.Message));
             }
         }
-
     }
-
- }
+}
