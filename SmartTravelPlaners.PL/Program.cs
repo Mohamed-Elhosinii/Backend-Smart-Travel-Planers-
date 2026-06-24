@@ -35,6 +35,8 @@ using SmartTravelPlaners.DAL.Context;
 using SmartTravelPlaners.DAL.Entities;
 using SmartTravelPlaners.DAL.Repositories.Abstract;
 using SmartTravelPlaners.DAL.Repositories.Concrete;
+using SmartTravelPlaners.BLL.Features.Admin.Interfaces;
+using SmartTravelPlaners.BLL.Features.Admin.Services;
 using System.ClientModel;
 using System.Text;
 
@@ -145,6 +147,7 @@ namespace SmartTravelPlaners.PL
                 builder.Configuration.GetSection("EmailSettings"));
             builder.Services.AddScoped<IEmailService, EmailService>();
             builder.Services.AddScoped<IAuthService, AuthService>();
+            builder.Services.AddScoped<IAdminDashboardService, AdminDashboardService>();
 
             // Repositories & Unit of Work
             builder.Services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
@@ -240,7 +243,7 @@ namespace SmartTravelPlaners.PL
             var app = builder.Build();
 
             // =======================================================
-            // 10. MIDDLEWARE PIPELINE
+            // 12. MIDDLEWARE PIPELINE
             // =======================================================
             app.UseSwagger();
             app.UseSwaggerUI(c =>
@@ -249,7 +252,9 @@ namespace SmartTravelPlaners.PL
                 c.RoutePrefix = string.Empty;
             });
 
-            app.UseHttpsRedirection();
+            // IMPORTANT: UseCors must come BEFORE UseHttpsRedirection
+            // to prevent CORS preflight OPTIONS requests from getting 307 redirected,
+            // which browsers block and causes "Redirect is not allowed for a preflight" errors.
             app.UseCors("AllowAngular");
 
             app.UseAuthentication();

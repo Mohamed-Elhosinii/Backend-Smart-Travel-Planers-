@@ -15,6 +15,7 @@ namespace SmartTravelPlaners.DAL.Entities
         public string? LocationName { get; set; }
         public double? Lat { get; set; }
         public double? Lng { get; set; }
+        public string TimeSlot { get; set; } = "Morning";   // Morning | Afternoon | Evening | Night
         public TimeOnly? StartTime { get; set; }
         public decimal EstimatedCost { get; set; }
         public string? BookingUrl { get; set; }

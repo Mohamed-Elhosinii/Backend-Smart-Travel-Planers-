@@ -239,31 +239,55 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
             var days = new List<DayPlanDto>();
 
 
-            var attractionsTask = SearchPlaces(trip.Destination, "attraction");
-            var restaurantsTask = SearchPlaces(trip.Destination, "restaurant");
-            var cafesTask = SearchPlaces(trip.Destination, "cafe");
+            var categories = new List<string> { "attraction", "restaurant", "cafe", "museum", "park", "shopping" };
+            if (trip.Preferences != null && trip.Preferences.Any())
+            {
+                var prefs = trip.Preferences.Select(p => p.Value.ToLower()).ToList();
+                categories = categories.Union(prefs).ToList();
+            }
 
-            await Task.WhenAll(attractionsTask, restaurantsTask, cafesTask);
+            var categoryTasks = categories.ToDictionary(
+                c => c, 
+                c => SearchPlaces(trip.Destination, c)
+            );
 
-            var attractions = attractionsTask.Result;
-            var restaurants = restaurantsTask.Result;
-            var cafes = cafesTask.Result;
+            await Task.WhenAll(categoryTasks.Values);
+
+            var placesByCategory = categoryTasks.ToDictionary(
+                kvp => kvp.Key,
+                kvp => kvp.Value.Result
+            );
+
+            var random = new Random();
+            var timeSlots = new[] { "Morning", "Afternoon", "Evening", "Night" };
 
             for (int dayNumber = 1; dayNumber <= numberOfDays; dayNumber++)
             {
                 var date = trip.StartDate.AddDays(dayNumber - 1);
                 var activities = new List<ActivityPlanDto>();
 
-                AddActivityIfAvailable(activities, attractions, usedPlaceIds, "Morning", "Attraction", dailyBudget * 0.4m);
-                AddActivityIfAvailable(activities, restaurants, usedPlaceIds, "Lunch", "Restaurant", dailyBudget * 0.3m);
-                AddActivityIfAvailable(activities, cafes, usedPlaceIds, "Evening", "Cafe", dailyBudget * 0.3m);
+                // Dynamically decide how many activities today (2 to 4)
+                int activitiesToday = random.Next(2, 5);
+                var costPerActivity = activitiesToday > 0 ? dailyBudget / activitiesToday : 0;
+
+                var dailyCategories = categories.OrderBy(x => random.Next()).Take(activitiesToday).ToList();
+                var dailySlots = timeSlots.OrderBy(x => random.Next()).Take(activitiesToday).OrderBy(x => Array.IndexOf(timeSlots, x)).ToList();
+
+                for (int i = 0; i < activitiesToday; i++)
+                {
+                    var cat = dailyCategories[i];
+                    var slot = dailySlots[i];
+                    var pool = placesByCategory[cat];
+
+                    AddActivityIfAvailable(activities, pool, usedPlaceIds, slot, char.ToUpper(cat[0]) + cat.Substring(1), costPerActivity);
+                }
 
                 days.Add(new DayPlanDto
                 {
                     DayNumber = dayNumber,
                     Date = date,
                     BudgetAllocated = dailyBudget,
-                    Activities = activities
+                    Activities = activities.OrderBy(a => Array.IndexOf(timeSlots, a.TimeSlot)).ToList()
                 });
             }
 
@@ -398,6 +422,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                         LocationName = activity.LocationName,
                         Lat = activity.Lat,
                         Lng = activity.Lng,
+                        TimeSlot = activity.TimeSlot ?? "Morning",
                         EstimatedCost = activity.EstimatedCost,
                         Status = ActivityStatus.Suggested,
                         PlaceId = activity.PlaceId,
@@ -639,41 +664,46 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
 
             await _unitOfWork.CompleteAsync(); 
 
-          
-            var attractionsTask = SearchPlaces(trip.Destination, "attraction");
-            var restaurantsTask = SearchPlaces(trip.Destination, "restaurant");
-            var cafesTask = SearchPlaces(trip.Destination, "cafe");
+            var categories = new List<string> { "attraction", "restaurant", "cafe", "museum", "park", "shopping" };
+            if (trip.Preferences != null && trip.Preferences.Any())
+            {
+                var prefs = trip.Preferences.Select(p => p.Value.ToLower()).ToList();
+                categories = categories.Union(prefs).ToList();
+            }
 
-            await Task.WhenAll(attractionsTask, restaurantsTask, cafesTask);
+            var categoryTasks = categories.ToDictionary(
+                c => c, 
+                c => SearchPlaces(trip.Destination, c)
+            );
 
-            
+            await Task.WhenAll(categoryTasks.Values);
+
+            var placesByCategory = categoryTasks.ToDictionary(
+                kvp => kvp.Key,
+                kvp => kvp.Value.Result
+            );
+
             var newActivities = new List<ActivityPlanDto>();
+            var usedPlaceIds = new HashSet<string>();
+            var random = new Random();
+            var timeSlots = new[] { "Morning", "Afternoon", "Evening", "Night" };
 
-            var usedPlaceIds = new HashSet<string>(); 
+            int activitiesToday = random.Next(2, 5);
+            var costPerActivity = activitiesToday > 0 ? dailyBudget / activitiesToday : 0;
 
-            AddActivityIfAvailable(
-                newActivities,
-                attractionsTask.Result,
-                usedPlaceIds,
-                "Morning",
-                "Attraction",
-                dailyBudget * 0.4m);
+            var dailyCategories = categories.OrderBy(x => random.Next()).Take(activitiesToday).ToList();
+            var dailySlots = timeSlots.OrderBy(x => random.Next()).Take(activitiesToday).OrderBy(x => Array.IndexOf(timeSlots, x)).ToList();
 
-            AddActivityIfAvailable(
-                newActivities,
-                restaurantsTask.Result,
-                usedPlaceIds,
-                "Lunch",
-                "Restaurant",
-                dailyBudget * 0.3m);
+            for (int i = 0; i < activitiesToday; i++)
+            {
+                var cat = dailyCategories[i];
+                var slot = dailySlots[i];
+                var pool = placesByCategory[cat];
 
-            AddActivityIfAvailable(
-                newActivities,
-                cafesTask.Result,
-                usedPlaceIds,
-                "Evening",
-                "Cafe",
-                dailyBudget * 0.3m);
+                AddActivityIfAvailable(newActivities, pool, usedPlaceIds, slot, char.ToUpper(cat[0]) + cat.Substring(1), costPerActivity);
+            }
+
+            newActivities = newActivities.OrderBy(a => Array.IndexOf(timeSlots, a.TimeSlot)).ToList();
 
             
             if (newActivities.Count == 0)
@@ -693,6 +723,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                     LocationName = activity.LocationName,
                     Lat = activity.Lat,
                     Lng = activity.Lng,
+                    TimeSlot = activity.TimeSlot ?? "Morning",
                     EstimatedCost = activity.EstimatedCost,
                     Status = ActivityStatus.Suggested,
                     PlaceId = activity.PlaceId
@@ -780,6 +811,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                             LocationName = activity.LocationName,
                             Lat = activity.Lat,
                             Lng = activity.Lng,
+                            TimeSlot = activity.TimeSlot ?? "Morning",
                             EstimatedCost = activity.EstimatedCost,
                             Status = ActivityStatus.Suggested,
                             PlaceId = activity.PlaceId,
@@ -851,16 +883,17 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
             if (nextFlight is null)
                 return null;
 
+            var flightBudget = BudgetAllocator.FlightBudget(trip.BudgetTotal);
+
             if (currentFlight is not null)
             {
-                
                 currentFlight.Airline = nextFlight.AirlineName;
                 currentFlight.FlightNumber = nextFlight.FlightNumber;
                 currentFlight.Origin = nextFlight.DepartureAirport;
                 currentFlight.Destination = nextFlight.ArrivalAirport;
                 currentFlight.DepartureTime = ParseDateTime(nextFlight.DepartureTime);
                 currentFlight.ArrivalTime = ParseDateTime(nextFlight.ArrivalTime);
-               
+                currentFlight.Price = flightBudget;
 
                 _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Flight>().Update(currentFlight);
             }
@@ -876,7 +909,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                     Destination = nextFlight.ArrivalAirport,
                     DepartureTime = ParseDateTime(nextFlight.DepartureTime),
                     ArrivalTime = ParseDateTime(nextFlight.ArrivalTime),
-                    Price = 0,
+                    Price = flightBudget,
                     Status = BookingStatus.Suggested
                 };
 
@@ -885,7 +918,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
 
             await _unitOfWork.CompleteAsync();
 
-            return MapFlight(nextFlight,0);
+            return MapFlight(nextFlight, flightBudget);
         }
 
         public async Task<TripPlanDto> GetCurrentPlanAsync(Guid tripId)
@@ -904,6 +937,20 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 .OrderBy(d => d.DayNumber)
                 .ToList();
 
+            var weatherDays = (await _unitOfWork.Repository<WeatherDay>()
+                .FindAsync(w => w.TripId == tripId))
+                .Select(w => new DayWeatherDto
+                {
+                    Date = w.Date,
+                    TempMax = w.TempMax,
+                    TempMin = w.TempMin,
+                    Humidity = w.Humidity,
+                    PrecipProb = w.PrecipProb,
+                    Conditions = w.Conditions,
+                    IconUrl = w.IconUrl
+                })
+                .ToList();
+
             var numberOfNights = Math.Max(trip.EndDate.DayNumber - trip.StartDate.DayNumber, 1);
 
             var dayDtos = tripDays.Select(d => new DayPlanDto
@@ -918,10 +965,11 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                     LocationName = a.LocationName,
                     Lat = a.Lat,
                     Lng = a.Lng,
-                    TimeSlot = "Morning",
+                    TimeSlot = a.TimeSlot,
                     EstimatedCost = a.EstimatedCost,
                     PlaceId = a.PlaceId
-                }).ToList()
+                }).ToList(),
+                Weather = weatherDays.FirstOrDefault(w => w.Date == d.Date)
             }).ToList();
 
             var estimatedTotal =
@@ -953,6 +1001,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                     ArrivalTime = flightEntity.ArrivalTime.ToString("o")
                 },
                 Days = dayDtos,
+                Weather = weatherDays,
                 Summary = $"Trip to {trip.Destination} ({trip.StartDate} - {trip.EndDate}), " +
                           $"{(hotelEntity != null ? $"staying at {hotelEntity.Name}" : "no hotel selected")}" +
                           $"{(flightEntity != null ? $" with a flight via {flightEntity.Airline}" : "")}, " +
