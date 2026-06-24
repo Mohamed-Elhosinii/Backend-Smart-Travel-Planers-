@@ -42,7 +42,7 @@ namespace SmartTravelPlaners.BLL.Services.Concrete
         // ============================================================
         // REGISTER
         // ============================================================
-        public async Task<AuthResponseDto> RegisterAsync(RegisterDto dto)
+        public async Task<string> RegisterAsync(RegisterDto dto)
         {
             var existingUser = await _userManager.FindByEmailAsync(dto.Email);
             if (existingUser != null)
@@ -72,7 +72,7 @@ namespace SmartTravelPlaners.BLL.Services.Concrete
 
             await SendConfirmEmailAsync(user.Id);
 
-            return await GenerateAuthResponseAsync(user);
+            return user.Id;
         }
 
         // ============================================================
@@ -137,18 +137,21 @@ namespace SmartTravelPlaners.BLL.Services.Concrete
             var user = await _userManager.FindByIdAsync(userId);
             if (user == null) throw new Exception("User not found");
 
+            // Generates a 6-digit OTP because we set EmailConfirmationTokenProvider to DefaultEmailProvider
             var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-            var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
-
-            var confirmLink = $"https://yourdomain.com/api/auth/confirm-email?userId={user.Id}&token={encodedToken}";
 
             var body = $@"
-        <h2>Confirm Your Email</h2>
-        <p>Click the link below to confirm your email:</p>
-        <a href='{confirmLink}'>Confirm Email</a>
+        <div style='font-family: Arial, sans-serif; text-align: center; padding: 20px;'>
+            <h2>Confirm Your Email</h2>
+            <p>Your one-time verification code is:</p>
+            <div style='font-size: 24px; font-weight: bold; padding: 15px; background: #f4f4f4; border-radius: 8px; display: inline-block; letter-spacing: 5px;'>
+                {token}
+            </div>
+            <p style='margin-top: 20px; color: #777;'>This code will expire shortly.</p>
+        </div>
     ";
 
-            await _emailService.SendEmailAsync(user.Email!, "Confirm Your Email", body);
+            await _emailService.SendEmailAsync(user.Email!, "Your Verification Code", body);
         }
 
         // ============================================================
@@ -159,8 +162,8 @@ namespace SmartTravelPlaners.BLL.Services.Concrete
             var user = await _userManager.FindByIdAsync(dto.UserId);
             if (user == null) throw new Exception("User not found");
 
-            var decodedToken = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(dto.Token));
-            var result = await _userManager.ConfirmEmailAsync(user, decodedToken);
+            // dto.Token is now the 6-digit OTP code directly
+            var result = await _userManager.ConfirmEmailAsync(user, dto.Token);
 
             return result.Succeeded;
         }
@@ -173,17 +176,19 @@ namespace SmartTravelPlaners.BLL.Services.Concrete
             var user = await _userManager.FindByEmailAsync(dto.Email);
             if (user == null) return; // مش بنقول للمستخدم إن الإيميل مش موجود (security)
 
+            // Generate 6-digit OTP
             var token = await _userManager.GeneratePasswordResetTokenAsync(user);
-            var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
 
-            var resetLink = $"https://yourdomain.com/reset-password?userId={user.Id}&token={encodedToken}";
-
-               var body = $@"
-           <h2>Reset Your Password</h2>
-           <p>Click the link below to reset your password:</p>
-           <a href='{resetLink}'>Reset Password</a>
-           <p>This link expires in 1 hour.</p>
-                  ";
+            var body = $@"
+        <div style='font-family: Arial, sans-serif; text-align: center; padding: 20px;'>
+            <h2>Reset Your Password</h2>
+            <p>Your password reset code is:</p>
+            <div style='font-size: 24px; font-weight: bold; padding: 15px; background: #f4f4f4; border-radius: 8px; display: inline-block; letter-spacing: 5px;'>
+                {token}
+            </div>
+            <p style='margin-top: 20px; color: #777;'>This code will expire shortly.</p>
+        </div>
+    ";
 
             await _emailService.SendEmailAsync(user.Email!, "Reset Your Password", body);
         }
@@ -193,11 +198,11 @@ namespace SmartTravelPlaners.BLL.Services.Concrete
         // ============================================================
         public async Task<bool> ResetPasswordAsync(ResetPasswordDto dto)
         {
-            var user = await _userManager.FindByIdAsync(dto.UserId);
+            var user = await _userManager.FindByEmailAsync(dto.Email);
             if (user == null) throw new Exception("User not found");
 
-            var decodedToken = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(dto.Token));
-            var result = await _userManager.ResetPasswordAsync(user, decodedToken, dto.NewPassword);
+            // dto.Token is now the 6-digit OTP
+            var result = await _userManager.ResetPasswordAsync(user, dto.Token, dto.NewPassword);
 
             if (!result.Succeeded)
                 throw new Exception(string.Join(", ", result.Errors.Select(e => e.Description)));
@@ -223,6 +228,22 @@ namespace SmartTravelPlaners.BLL.Services.Concrete
                 var result = await _userManager.CreateAsync(user);
                 if (!result.Succeeded)
                     throw new Exception(string.Join(", ", result.Errors.Select(e => e.Description)));
+            }
+
+            // Ensure UserProfile exists (fixes accounts that were created without one)
+            var userProfileExists = await _context.UserProfiles.AnyAsync(up => up.AspNetUserId == user.Id);
+            if (!userProfileExists)
+            {
+                _context.UserProfiles.Add(new UserProfile
+                {
+                    Id = Guid.NewGuid(),
+                    AspNetUserId = user.Id,
+                    CreatedAt = DateTime.UtcNow
+                });
+                await _context.SaveChangesAsync();
+
+                // Create default Free subscription
+                await _subscriptionService.EnsureDefaultSubscriptionAsync(user.Id);
             }
 
             return await GenerateAuthResponseAsync(user);
