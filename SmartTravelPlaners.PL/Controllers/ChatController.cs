@@ -10,7 +10,7 @@ namespace SmartTravelPlaners.PL.Controllers
     [Authorize]
     public class ChatController : ControllerBase
     {
-        private readonly IChatService _chatService;   // <-- IChatService بدل ChatService
+        private readonly IChatService _chatService;
 
         public ChatController(IChatService chatService)
         {
@@ -50,12 +50,12 @@ namespace SmartTravelPlaners.PL.Controllers
             if (userId == null) return Unauthorized();
 
             var sessions = await _chatService.GetUserSessionsAsync(userId);
-            
-            // Map to a simpler DTO if needed, or return entities
+
             var result = sessions.Select(s => new {
                 id = s.Id,
                 date = s.UpdatedAt.ToString("MMM dd, yyyy"),
-                title = s.TripId != null ? "Trip Details" : "New Journey"
+                title = s.TripId != null ? "Trip Details" : "New Journey",
+                tripId = s.TripId
             });
 
             return Ok(result);
@@ -77,8 +77,31 @@ namespace SmartTravelPlaners.PL.Controllers
         public async Task<IActionResult> GetPlan(Guid tripId)
         {
             var plan = await _chatService.GetTripPlanAsync(tripId);
-            if (plan == null) return NotFound("Plan not found or not ready.");
+            if (plan == null) return NotFound("Plan not ready yet.");
             return Ok(plan);
+        }
+
+        // POST api/chat/session/link-trip
+        [HttpPost("session/link-trip")]
+        public async Task<IActionResult> LinkTrip([FromBody] LinkTripDto dto)
+        {
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (userId == null) return Unauthorized();
+
+            try
+            {
+                await _chatService.LinkSessionToTripAsync(dto.SessionId, userId, dto.TripId);
+                return Ok(new { success = true });
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return Forbid();
+            }
+            catch (Exception ex)
+            {
+                var inner = ex.InnerException?.Message ?? "no inner exception";
+                return BadRequest(new { error = ex.Message, inner });
+            }
         }
     }
 
@@ -86,5 +109,11 @@ namespace SmartTravelPlaners.PL.Controllers
     {
         public Guid SessionId { get; set; }
         public string Message { get; set; } = string.Empty;
+    }
+
+    public class LinkTripDto
+    {
+        public Guid SessionId { get; set; }
+        public Guid TripId { get; set; }
     }
 }

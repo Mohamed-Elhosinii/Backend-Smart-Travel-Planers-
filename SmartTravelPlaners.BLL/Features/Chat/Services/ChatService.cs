@@ -113,7 +113,6 @@ If the user wants a DIFFERENT FLIGHT for their existing trip (e.g. ""غيرلي 
 
 TRIP_UPDATE_FLIGHT:{}
 
-
 If the user wants DIFFERENT ACTIVITIES for a specific day of their existing trip
 (e.g. ""عايز أنشطة او اماكن تانية يوم 2""), respond ONLY with:
 
@@ -168,6 +167,7 @@ Rules:
 
             Console.WriteLine("DEBUG BACKEND: Received message from user, initiating LLM call...");
             Console.WriteLine($"DEBUG BACKEND: Hitting provider Endpoint: {endpoint} | ModelId: {modelId}");
+
             Microsoft.SemanticKernel.ChatMessageContent result = null;
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             try
@@ -204,7 +204,6 @@ Rules:
             bool HasKeyword(string keyword) =>
                 rawReply.Contains(keyword, StringComparison.Ordinal);
 
-
             // =========================
             // CREATE TRIP FLOW
             // =========================
@@ -229,15 +228,13 @@ Rules:
                 var trip = creationResult.Trip!;
                 session.TripId = trip.Id;
                 session.Stage = ChatStage.PlanReady;
-
                 await _chatRepo.SaveChangesAsync();
 
                 finalReply = $"ممتاز! جاري تجهيز أفضل خطة لرحلتك إلى {trip.Destination} (من {trip.StartDate} إلى {trip.EndDate}). ثواني وهتكون جاهزة ✈️";
                 plan = null;
             }
-
             // =========================
-            // View Trip
+            // VIEW TRIP FLOW
             // =========================
             else if (HasKeyword("TRIP_SHOW:"))
             {
@@ -398,11 +395,8 @@ Rules:
                     };
                 }
 
-                var json = (ExtractAfter(rawReply, "TRIP_UPDATE_FIELD:") 
+                var json = (ExtractAfter(rawReply, "TRIP_UPDATE_FIELD:")
                          ?? ExtractAfter(rawReply, "TRIP_UPDATE:"))!;
-
-                await UpdateTripFieldAsync(json, session.TripId);
-                await _chatRepo.SaveChangesAsync(); // persist the field change before rebuilding
 
                 session.Stage = ChatStage.Modifying;
 
@@ -455,7 +449,7 @@ Rules:
                                 case "origincity":
                                     await orchestrator.RegenerateFlightAsync(tripId);
                                     break;
-                                
+
                                 default:
                                     // Just rebuild plan if field is something else
                                     await orchestrator.BuildTripPlanAsync(tripId);
@@ -481,8 +475,6 @@ Rules:
             {
                 finalReply = rawReply;
             }
-            
-
 
             await _chatRepo.AddMessageAsync(new ChatMessage
             {
@@ -555,7 +547,7 @@ Rules:
 
             _tripRepo.Update(trip);
 
-            return field.ToLower(); 
+            return field.ToLower();
         }
 
         public async Task<ChatSession> CreateSessionAsync(string userId)
@@ -589,6 +581,22 @@ Rules:
             {
                 return null;
             }
+        }
+
+        public async Task LinkSessionToTripAsync(Guid sessionId, string userId, Guid tripId)
+        {
+            var session = await _chatRepo.GetSessionAsync(sessionId);
+            if (session == null)
+                throw new Exception("Session not found");
+
+            if (session.UserId != userId)
+                throw new UnauthorizedAccessException("You do not have access to this session.");
+
+            session.TripId = tripId;
+            session.Stage = ChatStage.PlanReady;
+            session.UpdatedAt = DateTime.UtcNow;
+
+            await _chatRepo.SaveChangesAsync();
         }
     }
 }
