@@ -88,6 +88,9 @@ namespace SmartTravelPlaners.BLL.Services.Concrete
             if (!isPasswordValid)
                 throw new Exception("Invalid email or password");
 
+            if (!user.EmailConfirmed)
+                throw new Exception("Email is not confirmed. Please verify your email first.");
+
             return await GenerateAuthResponseAsync(user);
         }
 

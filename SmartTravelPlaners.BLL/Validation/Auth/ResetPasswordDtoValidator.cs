@@ -9,7 +9,7 @@ namespace SmartTravelPlaners.BLL.Validation.Auth
         {
             RuleFor(x => x.Email)
                 .NotEmpty().WithMessage("Email is required.")
-                .EmailAddress().WithMessage("Must be a valid email format.");
+                .EmailAddress().WithMessage("A valid email is required.");
 
             RuleFor(x => x.Token)
                 .NotEmpty().WithMessage("Token is required.");

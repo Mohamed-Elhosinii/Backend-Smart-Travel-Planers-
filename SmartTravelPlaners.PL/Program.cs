@@ -132,10 +132,8 @@ namespace SmartTravelPlaners.PL
                 options.Password.RequireNonAlphanumeric = false;
                 options.SignIn.RequireConfirmedEmail = true;
 
-                // Use 6-digit OTP for email confirmation
+                // Ensure 6-digit OTPs are generated instead of long tokens
                 options.Tokens.EmailConfirmationTokenProvider = TokenOptions.DefaultEmailProvider;
-
-                // Use 6-digit OTP for password reset
                 options.Tokens.PasswordResetTokenProvider = TokenOptions.DefaultEmailProvider;
             })
             .AddEntityFrameworkStores<ApplicationDbContext>()

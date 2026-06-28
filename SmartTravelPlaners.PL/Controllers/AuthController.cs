@@ -31,7 +31,7 @@ namespace SmartTravelPlaners.PL.Controllers
             try
             {
                 var result = await _authService.RegisterAsync(dto);
-                return Ok(ApiResponse<string>.Success(result, "Registration successful. Please confirm your email."));
+                return Ok(ApiResponse<string>.Success(result, "Registration successful"));
             }
             catch (Exception ex)
             {
@@ -91,10 +91,10 @@ namespace SmartTravelPlaners.PL.Controllers
             }
         }
 
-        [HttpPost("confirm-email")]
+        [HttpGet("confirm-email")]
         [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
-        public async Task<IActionResult> ConfirmEmail([FromBody] ConfirmEmailDto dto)
+        public async Task<IActionResult> ConfirmEmail([FromQuery] ConfirmEmailDto dto)
         {
             try
             {
@@ -112,12 +112,12 @@ namespace SmartTravelPlaners.PL.Controllers
         [HttpPost("resend-confirm-email")]
         [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
-        public async Task<IActionResult> ResendConfirmEmail([FromBody] ConfirmEmailDto dto) // we only really need UserId, but we can reuse the DTO and ignore Token
+        public async Task<IActionResult> ResendConfirmEmail([FromQuery] string userId)
         {
             try
             {
-                await _authService.SendConfirmEmailAsync(dto.UserId);
-                return Ok(ApiResponse.Success("A new confirmation code has been sent to your email."));
+                await _authService.SendConfirmEmailAsync(userId);
+                return Ok(ApiResponse.Success("Email sent successfully"));
             }
             catch (Exception ex)
             {
