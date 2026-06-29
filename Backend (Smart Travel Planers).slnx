@@ -2,4 +2,5 @@
   <Project Path="SmartTravelPlaners.BLL/SmartTravelPlaners.BLL.csproj" />
   <Project Path="SmartTravelPlaners.DAL/SmartTravelPlaners.DAL.csproj" />
   <Project Path="SmartTravelPlaners.PL/SmartTravelPlaners.PL.csproj" />
+  <Project Path="SmartTravelPlaners.Tests/SmartTravelPlaners.Tests.csproj" />
 </Solution>

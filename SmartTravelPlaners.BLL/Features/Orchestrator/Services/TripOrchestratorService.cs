@@ -570,11 +570,15 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
 
             var hotels = TryDeserialize<List<GoogleHotelDto>>(filteredJson) ?? new();
 
-            if (hotels.Count <= 1)
+            if (hotels.Count == 0)
             {
                 var searchJson = await _hotelPlugin.SearchHotelsAsync(
                     trip.Destination, checkIn, checkOut, trip.NumTravelers, 0);
-                hotels = TryDeserialize<List<GoogleHotelDto>>(searchJson) ?? new();
+                var searchHotels = TryDeserialize<List<GoogleHotelDto>>(searchJson) ?? new();
+                if (searchHotels.Count > 0)
+                 {
+                    hotels = searchHotels;
+                }
             }
 
             var withinBudget = hotels
@@ -630,17 +634,17 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
 
         public async Task<List<ActivityPlanDto>> RegenerateDayActivitiesAsync(Guid tripId, int dayNumber)
         {
-            // 1. Get TripDay من DB مباشرة
+           
             var tripDay = (await _unitOfWork.Repository<TripDay>()
                 .FindAsync(d => d.TripId == tripId && d.DayNumber == dayNumber))
                 .FirstOrDefault()
                 ?? throw new Exception($"Day {dayNumber} not found for trip {tripId}");
 
-            // 2. Get Trip
+           
             var trip = await _unitOfWork.Trips.GetTripWithDetailsAsync(tripId)
                 ?? throw new Exception($"Trip {tripId} not found");
 
-            // 3. احسب الميزانية
+           
             var numberOfDays = Math.Max(trip.EndDate.DayNumber - trip.StartDate.DayNumber, 1);
 
             var activitiesBudget = trip.OriginCity is not null
@@ -649,7 +653,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
 
             var dailyBudget = activitiesBudget / numberOfDays;
 
-            // 4. 🚨 DELETE OLD ACTIVITIES FIRST (مهم جدًا)
+           
             var oldActivities = await _unitOfWork.Repository<Activity>()
                 .FindAsync(a => a.TripDayId == tripDay.Id);
 
@@ -658,7 +662,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 _unitOfWork.Repository<Activity>().Delete(act);
             }
 
-            await _unitOfWork.CompleteAsync(); // لازم هنا قبل البناء
+            await _unitOfWork.CompleteAsync(); 
 
             var categories = new List<string> { "attraction", "restaurant", "cafe", "museum", "park", "shopping" };
             if (trip.Preferences != null && trip.Preferences.Any())
@@ -701,13 +705,13 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
 
             newActivities = newActivities.OrderBy(a => Array.IndexOf(timeSlots, a.TimeSlot)).ToList();
 
-            // 7. لو مفيش بيانات
+            
             if (newActivities.Count == 0)
             {
                 return new List<ActivityPlanDto>();
             }
 
-            // 8. INSERT NEW ACTIVITIES
+           
             foreach (var activity in newActivities)
             {
                 _unitOfWork.Repository<Activity>().AddAsync(new Activity
@@ -752,6 +756,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                         _unitOfWork.Repository<TripDay>().Update(day);
                     }
                 }
+                await _unitOfWork.CompleteAsync();
             }
             else if (existingCount < numberOfDays)
             {
@@ -815,6 +820,8 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                     }
 
                     await _unitOfWork.Repository<TripDay>().AddAsync(tripDay);
+                    await _unitOfWork.CompleteAsync();
+
                 }
             }
             else
@@ -846,7 +853,14 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 ?? throw new Exception($"Trip {tripId} not found");
 
             if (string.IsNullOrWhiteSpace(trip.OriginCity))
-                return null; 
+            {
+                var oldFlights = await _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Flight>()
+                    .FindAsync(f => f.TripId == tripId);
+                foreach (var f in oldFlights)
+                    _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Flight>().Delete(f);
+                await _unitOfWork.CompleteAsync();
+                return null;
+            }
 
             var currentFlight = trip.Flights?.FirstOrDefault();
             var departureDate = trip.StartDate.ToString("yyyy-MM-dd");
@@ -869,52 +883,73 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 return null;
             }
 
-           
             var filtered = candidates
                 .Where(f => currentFlight == null ||
                             !string.Equals(f.FlightNumber, currentFlight.FlightNumber, StringComparison.OrdinalIgnoreCase))
                 .ToList();
 
+            var flightBudget = BudgetAllocator.FlightBudget(trip.BudgetTotal);
             var nextFlight = filtered.FirstOrDefault() ?? candidates.FirstOrDefault();
+
+            
+            var existingFlights = await _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Flight>()
+                .FindAsync(f => f.TripId == tripId);
+            foreach (var f in existingFlights)
+                _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Flight>().Delete(f);
+            await _unitOfWork.CompleteAsync();
+
             if (nextFlight is null)
                 return null;
 
-            var flightBudget = BudgetAllocator.FlightBudget(trip.BudgetTotal);
-
-            if (currentFlight is not null)
+            var flightEntity = new SmartTravelPlaners.DAL.Entities.Flight
             {
-                currentFlight.Airline = nextFlight.AirlineName;
-                currentFlight.FlightNumber = nextFlight.FlightNumber;
-                currentFlight.Origin = nextFlight.DepartureAirport;
-                currentFlight.Destination = nextFlight.ArrivalAirport;
-                currentFlight.DepartureTime = ParseDateTime(nextFlight.DepartureTime);
-                currentFlight.ArrivalTime = ParseDateTime(nextFlight.ArrivalTime);
-                currentFlight.Price = flightBudget;
+                Id = Guid.NewGuid(),
+                TripId = trip.Id,
+                Airline = nextFlight.AirlineName,
+                FlightNumber = nextFlight.FlightNumber,
+                Origin = nextFlight.DepartureAirport,
+                Destination = nextFlight.ArrivalAirport,
+                DepartureTime = ParseDateTime(nextFlight.DepartureTime),
+                ArrivalTime = ParseDateTime(nextFlight.ArrivalTime),
+                Price = flightBudget,
+                Status = BookingStatus.Suggested
+            };
 
-                _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Flight>().Update(currentFlight);
-            }
-            else
-            {
-                var flightEntity = new SmartTravelPlaners.DAL.Entities.Flight
-                {
-                    Id = Guid.NewGuid(),
-                    TripId = trip.Id,
-                    Airline = nextFlight.AirlineName,
-                    FlightNumber = nextFlight.FlightNumber,
-                    Origin = nextFlight.DepartureAirport,
-                    Destination = nextFlight.ArrivalAirport,
-                    DepartureTime = ParseDateTime(nextFlight.DepartureTime),
-                    ArrivalTime = ParseDateTime(nextFlight.ArrivalTime),
-                    Price = flightBudget,
-                    Status = BookingStatus.Suggested
-                };
-
-                await _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Flight>().AddAsync(flightEntity);
-            }
-
+            await _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Flight>().AddAsync(flightEntity);
             await _unitOfWork.CompleteAsync();
 
             return MapFlight(nextFlight, flightBudget);
+        }
+        public async Task RegenerateWeatherAsync(Guid tripId)
+        {
+            var trip = await _unitOfWork.Trips.GetTripWithDetailsAsync(tripId)
+                ?? throw new Exception($"Trip {tripId} not found");
+
+            
+            var oldWeather = await _unitOfWork.Repository<WeatherDay>()
+                .FindAsync(w => w.TripId == tripId);
+            foreach (var w in oldWeather)
+                _unitOfWork.Repository<WeatherDay>().Delete(w);
+            await _unitOfWork.CompleteAsync();
+
+            
+            var weather = await GetWeatherAsync(trip.Destination, trip.StartDate, trip.EndDate);
+            foreach (var w in weather)
+            {
+                await _unitOfWork.Repository<WeatherDay>().AddAsync(new WeatherDay
+                {
+                    Id = Guid.NewGuid(),
+                    TripId = trip.Id,
+                    Date = w.Date,
+                    TempMax = w.TempMax,
+                    TempMin = w.TempMin,
+                    Humidity = w.Humidity,
+                    PrecipProb = w.PrecipProb,
+                    Conditions = w.Conditions,
+                    IconUrl = w.IconUrl
+                });
+            }
+            await _unitOfWork.CompleteAsync();
         }
 
         public async Task<TripPlanDto> GetCurrentPlanAsync(Guid tripId)
@@ -969,8 +1004,9 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
             }).ToList();
 
             var estimatedTotal =
-                (hotelEntity?.PricePerNight ?? 0) * numberOfNights
-                + dayDtos.Sum(d => d.Activities.Sum(a => a.EstimatedCost));
+     (hotelEntity?.PricePerNight ?? 0) * numberOfNights
+     + (flightEntity?.Price ?? 0)
+     + dayDtos.Sum(d => d.Activities.Sum(a => a.EstimatedCost));
 
             return new TripPlanDto
             {

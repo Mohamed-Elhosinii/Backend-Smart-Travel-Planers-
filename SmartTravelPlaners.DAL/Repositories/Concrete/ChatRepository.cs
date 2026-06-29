@@ -75,5 +75,13 @@ namespace SmartTravelPlaners.DAL.Repositories.Concrete
         {
             await _context.SaveChangesAsync();
         }
+        public async Task<ChatSession?> GetSessionByTripIdAsync(Guid tripId, string userId)
+        {
+            return await _context.ChatSessions
+                .Include(s => s.Messages)
+                .FirstOrDefaultAsync(s =>
+                    s.TripId == tripId &&
+                    s.UserId == userId);
+        }
     }
 }

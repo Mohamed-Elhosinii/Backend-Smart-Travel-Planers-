@@ -50,7 +50,15 @@ namespace SmartTravelPlaners.BLL.Features.Place.Services
             var response = await _foursquareHttp.SendAsync(request);
             response.EnsureSuccessStatusCode();
 
-            var result = await response.Content.ReadFromJsonAsync<FoursquareSearchResponse>();
+            // Safely read content as string and handle empty responses.
+            var contentString = response.Content == null ? null : await response.Content.ReadAsStringAsync();
+            if (string.IsNullOrWhiteSpace(contentString))
+                return new();
+
+            var result = JsonSerializer.Deserialize<FoursquareSearchResponse>(contentString, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
 
             if (result == null)
                 return new();

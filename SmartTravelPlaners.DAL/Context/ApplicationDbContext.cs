@@ -11,24 +11,24 @@ namespace SmartTravelPlaners.DAL.Context
     {
         public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options) { }
 
-        public DbSet<UserProfile> UserProfiles { get; set; }
-        public DbSet<Trip> Trips { get; set; }
-        public DbSet<TripDay> TripDays { get; set; }
-        public DbSet<Activity> Activities { get; set; }
-        public DbSet<Hotel> Hotels { get; set; }
-        public DbSet<Flight> Flights { get; set; }
-        public DbSet<WeatherDay> WeatherDays { get; set; }
-        public DbSet<TripPreference> TripPreferences { get; set; }
-        public DbSet<ChatSession> ChatSessions { get; set; }
-        public DbSet<ChatMessage> ChatMessages { get; set; }
-        public DbSet<PlaceCache> PlacesCache { get; set; }
-        public DbSet<RefreshToken> RefreshTokens { get; set; }
+        public virtual DbSet<UserProfile> UserProfiles { get; set; }
+        public virtual DbSet<Trip> Trips { get; set; }
+        public virtual DbSet<TripDay> TripDays { get; set; }
+        public virtual DbSet<Activity> Activities { get; set; }
+        public virtual DbSet<Hotel> Hotels { get; set; }
+        public virtual DbSet<Flight> Flights { get; set; }
+        public virtual DbSet<WeatherDay> WeatherDays { get; set; }
+        public virtual DbSet<TripPreference> TripPreferences { get; set; }
+        public virtual DbSet<ChatSession> ChatSessions { get; set; }
+        public virtual DbSet<ChatMessage> ChatMessages { get; set; }
+        public virtual DbSet<PlaceCache> PlacesCache { get; set; }
+        public virtual DbSet<RefreshToken> RefreshTokens { get; set; }
 
         // Subscription & Payments
-        public DbSet<Plan> Plans { get; set; }
-        public DbSet<Subscription> Subscriptions { get; set; }
-        public DbSet<UsageCounter> UsageCounters { get; set; }
-        public DbSet<PaymentTransaction> PaymentTransactions { get; set; }
+        public virtual DbSet<Plan> Plans { get; set; }
+        public virtual DbSet<Subscription> Subscriptions { get; set; }
+        public virtual DbSet<UsageCounter> UsageCounters { get; set; }
+        public virtual DbSet<PaymentTransaction> PaymentTransactions { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
