@@ -133,10 +133,36 @@ Rules:
 - Do NOT use multiple formats at once.");
 
             // Let the model know whether a trip already exists so it picks TRIP_UPDATE vs TRIP_READY.
+
             if (session.TripId != null)
             {
-                history.AddSystemMessage(
-                    "The user already has an active trip. If they want to change something, use TRIP_UPDATE (not TRIP_READY).");
+                var trip = await _tripRepo.GetByIdAsync(session.TripId.Value);
+                history.AddSystemMessage($@"
+The user already has an active trip. If they want to change something, use TRIP_UPDATE_FIELD (not TRIP_READY).
+
+Current trip details:
+Destination: {trip.Destination}
+Origin: {trip.OriginCity}
+Start Date: {trip.StartDate}
+End Date: {trip.EndDate}
+Travelers: {trip.NumTravelers}
+Budget: {trip.BudgetTotal}
+
+IMPORTANT RULES:
+- The user is referring to THIS trip ONLY.
+- Never ask for the destination or any trip details again.
+- Never ask for confirmation before making changes.
+-  When the user says they want to change something but does NOT provide the new value, ask for it first in Arabic.
+- Only respond with the format AFTER you have the new value.
+- For example: If the user says 'عدل الدولة' or 'غير الدولة' without specifying, ask: 'هل تقصد دولة الوجهة أم مدينة الانطلاق؟'
+- If they say 'الوجهة' or 'الذهاب', use TRIP_UPDATE_FIELD with field 'destination'.
+- If they say 'الانطلاق' or 'المغادرة', use TRIP_UPDATE_FIELD with field 'originCity'.
+- Do NOT say 'هل أنت متأكد' or 'هل تريد تغيير' — just do it directly.
+- If user says 'غير الأنشطة' or 'اقترح أماكن', respond ONLY with TRIP_UPDATE_ACTIVITIES and the day number.
+- If the user wants to change dates WITHOUT specifying which date (start or end), ask them first: 'هل تريد تغيير تاريخ البداية أم تاريخ العودة؟'
+- If the user specifies the date type AND the new value, respond IMMEDIATELY with TRIP_UPDATE_FIELD.
+- If user says 'تمام' or 'موافق' after a change, just confirm the change was made.
+");
             }
 
             foreach (var msg in session.Messages.OrderBy(m => m.CreatedAt))
@@ -216,25 +242,33 @@ Rules:
                 var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
                 var dto = JsonSerializer.Deserialize<TripCreateDto>(json, options)
                               ?? throw new Exception("Failed to parse trip data from AI");
+                if (DateOnly.TryParse(dto.StartDate, out var startDate) && startDate < DateOnly.FromDateTime(DateTime.Today))
+                {
+                    finalReply = "عذراً، لا يمكن إنشاء رحلة بتاريخ في الماضي. من فضلك اختر تاريخ مستقبلي.";
+                    plan = null;
+                }
 
                 // Shared create → background-build → usage pipeline
                 // (the SAME path as POST /api/Trip/quick-plan; one limit check, one
                 //  persistence path, one BuildTripPlanAsync, one usage increment).
-                var creationResult = await _tripCreationService.CreateAndBuildAsync(dto, session.UserId);
-
-                if (creationResult.LimitReached)
+                else
                 {
-                    return new ChatReplyDto { Message = creationResult.Message! };
+                    var creationResult = await _tripCreationService.CreateAndBuildAsync(dto, session.UserId);
+
+                    if (creationResult.LimitReached)
+                    {
+                        return new ChatReplyDto { Message = creationResult.Message! };
+                    }
+
+                    var trip = creationResult.Trip!;
+                    session.TripId = trip.Id;
+                    session.Stage = ChatStage.PlanReady;
+
+                    await _chatRepo.SaveChangesAsync();
+
+                    finalReply = $"ممتاز! جاري تجهيز أفضل خطة لرحلتك إلى {trip.Destination} (من {trip.StartDate} إلى {trip.EndDate}). ثواني وهتكون جاهزة ✈️";
+                    plan = null;
                 }
-
-                var trip = creationResult.Trip!;
-                session.TripId = trip.Id;
-                session.Stage = ChatStage.PlanReady;
-
-                await _chatRepo.SaveChangesAsync();
-
-                finalReply = $"ممتاز! جاري تجهيز أفضل خطة لرحلتك إلى {trip.Destination} (من {trip.StartDate} إلى {trip.EndDate}). ثواني وهتكون جاهزة ✈️";
-                plan = null;
             }
 
             // =========================
@@ -399,19 +433,16 @@ Rules:
                     };
                 }
 
-                var json = (ExtractAfter(rawReply, "TRIP_UPDATE_FIELD:") 
+                var json = (ExtractAfter(rawReply, "TRIP_UPDATE_FIELD:")
                          ?? ExtractAfter(rawReply, "TRIP_UPDATE:"))!;
-
-                await UpdateTripFieldAsync(json, session.TripId);
-                await _chatRepo.SaveChangesAsync(); // persist the field change before rebuilding
-
-                session.Stage = ChatStage.Modifying;
 
                 try
                 {
                     var tripId = session.TripId.Value;
-                    var changedField = await UpdateTripFieldAsync(json, tripId);
+                    var changedField = await UpdateTripFieldAsync(json, tripId); // ← مرة واحدة بس
                     await _chatRepo.SaveChangesAsync();
+
+                    session.Stage = ChatStage.Modifying;
 
                     _ = Task.Run(async () =>
                     {
@@ -425,6 +456,7 @@ Rules:
                             {
                                 case "destination":
                                     await orchestrator.RegenerateHotelAsync(tripId);
+                                    await Task.Delay(500); // ← استني شوية
                                     await orchestrator.RegenerateFlightAsync(tripId);
                                     var tripAfterDest = await tripRepo.GetByIdAsync(tripId);
                                     var daysAfterDest = tripAfterDest != null
@@ -432,11 +464,13 @@ Rules:
                                     for (int day = 1; day <= daysAfterDest; day++)
                                         await orchestrator.RegenerateDayActivitiesAsync(tripId, day);
                                     break;
+                                   
 
                                 case "startdate":
                                 case "enddate":
                                     await orchestrator.RegenerateHotelAsync(tripId);
                                     await orchestrator.RegenerateFlightAsync(tripId);
+                                    await orchestrator.RegenerateWeatherAsync(tripId);
                                     await orchestrator.SyncDayPlansAsync(tripId);
                                     break;
 
@@ -456,9 +490,8 @@ Rules:
                                 case "origincity":
                                     await orchestrator.RegenerateFlightAsync(tripId);
                                     break;
-                                
+
                                 default:
-                                    // Just rebuild plan if field is something else
                                     await orchestrator.BuildTripPlanAsync(tripId);
                                     break;
                             }
@@ -466,6 +499,7 @@ Rules:
                         catch (Exception ex)
                         {
                             Console.WriteLine($"Field cascade update failed: {ex.Message}");
+
                         }
                     });
 
@@ -475,7 +509,7 @@ Rules:
                 catch (Exception ex)
                 {
                     Console.WriteLine($"Update field failed: {ex.Message}");
-                    finalReply = "حصلت مشكلة في تحديث البيانات، ممكن تجرب تاني.";
+                    finalReply = ex.Message;
                 }
             }
             else
@@ -533,12 +567,17 @@ Rules:
                     break;
                 case "startdate":
                     var newStart = DateOnly.Parse(value);
+                    if (newStart < DateOnly.FromDateTime(DateTime.Today))
+                        throw new Exception("لا يمكن تغيير تاريخ البداية لتاريخ في الماضي");
                     if (newStart >= trip.EndDate)
                         throw new Exception("تاريخ البداية لازم يكون قبل تاريخ النهاية");
                     trip.StartDate = newStart;
                     break;
+
                 case "enddate":
                     var newEnd = DateOnly.Parse(value);
+                    if (newEnd < DateOnly.FromDateTime(DateTime.Today))
+                        throw new Exception("لا يمكن تغيير تاريخ النهاية لتاريخ في الماضي");
                     if (newEnd <= trip.StartDate)
                         throw new Exception("تاريخ النهاية لازم يكون بعد تاريخ البداية");
                     trip.EndDate = newEnd;
@@ -555,8 +594,10 @@ Rules:
             }
 
             _tripRepo.Update(trip);
+            await _unitOfWork.CompleteAsync(); 
+            return field.ToLower();
 
-            return field.ToLower(); 
+            
         }
 
         public async Task<ChatSession> CreateSessionAsync(string userId)
@@ -590,6 +631,25 @@ Rules:
             {
                 return null;
             }
+        }
+        
+        public async Task<ChatSession> GetOrCreateTripSessionAsync(Guid tripId, string userId)
+        {
+            // لو فيه Session موجودة للرحلة، رجعها
+            var existingSession = await _chatRepo.GetSessionByTripIdAsync(tripId, userId);
+
+            if (existingSession != null)
+                return existingSession;
+
+            // لو مفيش، اعمل Session جديدة
+            var session = await _chatRepo.CreateSessionAsync(userId);
+
+            session.TripId = tripId;
+            session.Stage = ChatStage.PlanReady;
+
+            await _chatRepo.SaveChangesAsync();
+
+            return session;
         }
     }
 }

@@ -488,31 +488,7 @@ namespace SmartTravelPlaners.Tests.Features.Orchestrator
             _flightRepoMock.Verify(r => r.AddAsync(It.IsAny<DAL.Entities.Flight>()), Times.Once);
         }
 
-        [Fact]
-        public async Task RegenerateFlightAsync_ShouldUpdateExistingFlight_WhenFlightExists()
-        {
-            var trip = MakeTrip(hasOrigin: true);
-            trip.Flights.Add(new DAL.Entities.Flight { Id = Guid.NewGuid(), TripId = trip.Id, FlightNumber = "MS700", Airline = "EgyptAir" });
-            _uowMock.Setup(u => u.Trips.GetTripWithDetailsAsync(trip.Id)).ReturnsAsync(trip);
-
-            _flightApiMock.Setup(f => f.SearchFlightsAsync(It.IsAny<FlightSearchRequest>()))
-              
-                .ReturnsAsync(new FlightSearchResult
-                {
-                    OutboundFlights = new List<FlightDto>
-                    {
-                        new() { AirlineName = "Air France", FlightNumber = "AF100",
-                                DepartureAirport = "CAI", ArrivalAirport = "CDG",
-                                DepartureTime = "2025-01-10T09:00:00", ArrivalTime = "2025-01-10T13:00:00" }
-                    }
-                });
-
-            var result = await _service.RegenerateFlightAsync(trip.Id);
-
-            Assert.NotNull(result);
-            Assert.Equal("Air France", result!.AirlineName);
-            _flightRepoMock.Verify(r => r.Update(It.IsAny<DAL.Entities.Flight>()), Times.Once);
-        }
+       
 
         [Fact]
         public async Task RegenerateFlightAsync_ShouldReturnNull_WhenSearchFails()

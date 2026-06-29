@@ -15,5 +15,7 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Interfaces
         Task<List<ChatMessage>> GetHistoryAsync(Guid sessionId, string userId);
 
         Task<TripPlanDto?> GetTripPlanAsync(Guid tripId);
+      Task<ChatSession> GetOrCreateTripSessionAsync(Guid tripId, string userId);
+        
     }
 }

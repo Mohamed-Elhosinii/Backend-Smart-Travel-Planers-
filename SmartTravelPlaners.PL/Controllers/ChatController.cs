@@ -50,9 +50,10 @@ namespace SmartTravelPlaners.PL.Controllers
             if (userId == null) return Unauthorized();
 
             var sessions = await _chatService.GetUserSessionsAsync(userId);
-            
+
             // Map to a simpler DTO if needed, or return entities
-            var result = sessions.Select(s => new {
+            var result = sessions.Select(s => new
+            {
                 id = s.Id,
                 date = s.UpdatedAt.ToString("MMM dd, yyyy"),
                 title = s.TripId != null ? "Trip Details" : "New Journey"
@@ -80,8 +81,42 @@ namespace SmartTravelPlaners.PL.Controllers
             if (plan == null) return NotFound("Plan not found or not ready.");
             return Ok(plan);
         }
+
+        //// POST api/chat/session/link-trip
+        //[HttpPost("session/link-trip")]
+        //public async Task<IActionResult> LinkSessionToTrip([FromBody] LinkTripDto dto)
+        //{
+        //    var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        //    if (userId == null) return Unauthorized();
+
+        //    await _chatService.LinkSessionToTripAsync(dto.SessionId, dto.TripId, userId);
+        //    return Ok();
+        //}
+        [HttpPost("session/trip")]
+        public async Task<IActionResult> GetOrCreateTripSession([FromBody] TripSessionDto dto)
+        {
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (userId == null)
+                return Unauthorized();
+
+            var session = await _chatService.GetOrCreateTripSessionAsync(dto.TripId, userId);
+
+            return Ok(new
+            {
+                sessionId = session.Id
+            });
+        }
+    }
+    public class TripSessionDto
+    {
+        public Guid TripId { get; set; }
     }
 
+    public class LinkTripDto
+    {
+        public Guid SessionId { get; set; }
+        public Guid TripId { get; set; }
+    }
     public class SendMessageDto
     {
         public Guid SessionId { get; set; }

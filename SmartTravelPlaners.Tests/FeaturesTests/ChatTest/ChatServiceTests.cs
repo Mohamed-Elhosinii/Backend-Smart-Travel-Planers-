@@ -171,21 +171,57 @@ namespace SmartTravelPlaners.Tests.Features.Chat
         [Fact]
         public async Task SendMessageAsync_ShouldRegenerateHotel_WhenTripExists()
         {
+            // Arrange
             var tripId = Guid.NewGuid();
+
+            var trip = new Trip
+            {
+                Id = tripId,
+                Destination = "Rome",
+                OriginCity = "Cairo",
+                StartDate = new DateOnly(2026, 7, 4),
+                EndDate = new DateOnly(2026, 7, 8),
+                NumTravelers = 2,
+                BudgetTotal = 5000
+            };
+
             var session = MakeSession(tripId: tripId);
-            _chatRepoMock.Setup(r => r.GetSessionAsync(session.Id)).ReturnsAsync(session);
-            _usageLimitMock.Setup(u => u.CanSendMessageAsync(session.UserId)).ReturnsAsync(true);
-            _usageLimitMock.Setup(u => u.IncrementMessageUsageAsync(session.UserId)).Returns(Task.CompletedTask);
-            _chatRepoMock.Setup(r => r.AddMessageAsync(It.IsAny<ChatMessage>())).Returns(Task.CompletedTask);
-            _chatRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+
+            _chatRepoMock
+                .Setup(r => r.GetSessionAsync(session.Id))
+                .ReturnsAsync(session);
+
+            _tripRepoMock
+                .Setup(r => r.GetByIdAsync(tripId))
+                .ReturnsAsync(trip);
+
+            _usageLimitMock
+                .Setup(u => u.CanSendMessageAsync(session.UserId))
+                .ReturnsAsync(true);
+
+            _usageLimitMock
+                .Setup(u => u.IncrementMessageUsageAsync(session.UserId))
+                .Returns(Task.CompletedTask);
+
+            _chatRepoMock
+                .Setup(r => r.AddMessageAsync(It.IsAny<ChatMessage>()))
+                .Returns(Task.CompletedTask);
+
+            _chatRepoMock
+                .Setup(r => r.SaveChangesAsync())
+                .Returns(Task.CompletedTask);
 
             SetupAiReply("TRIP_UPDATE_HOTEL:{}");
 
-            var result = await _service.SendMessageAsync(session.Id, session.UserId,  "غيرلي الفندق");
+            // Act
+            var result = await _service.SendMessageAsync(
+                session.Id,
+                session.UserId,
+                "غيرلي الفندق");
 
+            // Assert
             Assert.Contains("جاري", result.Message);
         }
-
         // ============================================================
         // SendMessageAsync — TRIP_UPDATE_FLIGHT with no trip
         // ============================================================
@@ -211,18 +247,55 @@ namespace SmartTravelPlaners.Tests.Features.Chat
         [Fact]
         public async Task SendMessageAsync_ShouldRegenerateFlight_WhenTripExists()
         {
+            // Arrange
             var tripId = Guid.NewGuid();
+
+            var trip = new Trip
+            {
+                Id = tripId,
+                Destination = "Rome",
+                OriginCity = "Cairo",
+                StartDate = new DateOnly(2026, 7, 4),
+                EndDate = new DateOnly(2026, 7, 8),
+                NumTravelers = 2,
+                BudgetTotal = 5000
+            };
+
             var session = MakeSession(tripId: tripId);
-            _chatRepoMock.Setup(r => r.GetSessionAsync(session.Id)).ReturnsAsync(session);
-            _usageLimitMock.Setup(u => u.CanSendMessageAsync(session.UserId)).ReturnsAsync(true);
-            _usageLimitMock.Setup(u => u.IncrementMessageUsageAsync(session.UserId)).Returns(Task.CompletedTask);
-            _chatRepoMock.Setup(r => r.AddMessageAsync(It.IsAny<ChatMessage>())).Returns(Task.CompletedTask);
-            _chatRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+
+            _chatRepoMock
+                .Setup(r => r.GetSessionAsync(session.Id))
+                .ReturnsAsync(session);
+
+            _tripRepoMock
+                .Setup(r => r.GetByIdAsync(tripId))
+                .ReturnsAsync(trip);
+
+            _usageLimitMock
+                .Setup(x => x.CanSendMessageAsync(session.UserId))
+                .ReturnsAsync(true);
+
+            _usageLimitMock
+                .Setup(x => x.IncrementMessageUsageAsync(session.UserId))
+                .Returns(Task.CompletedTask);
+
+            _chatRepoMock
+                .Setup(x => x.AddMessageAsync(It.IsAny<ChatMessage>()))
+                .Returns(Task.CompletedTask);
+
+            _chatRepoMock
+                .Setup(x => x.SaveChangesAsync())
+                .Returns(Task.CompletedTask);
 
             SetupAiReply("TRIP_UPDATE_FLIGHT:{}");
 
-            var result = await _service.SendMessageAsync(session.Id, session.UserId,  "غيرلي الطيران");
+            // Act
+            var result = await _service.SendMessageAsync(
+                session.Id,
+                session.UserId,
+                "غيرلي الطيران");
 
+            // Assert
             Assert.Contains("جاري", result.Message);
         }
 
