@@ -17,7 +17,7 @@ using System.Text;
 
 namespace SmartTravelPlaners.BLL.Services.Concrete
 {
-    
+
     public class AuthService : IAuthService
     {
         private readonly UserManager<ApplicationUser> _userManager;
@@ -225,7 +225,7 @@ namespace SmartTravelPlaners.BLL.Services.Concrete
                     FullName = fullName,
                     Email = email,
                     UserName = email,
-                    EmailConfirmed = true 
+                    EmailConfirmed = true
                 };
 
                 var result = await _userManager.CreateAsync(user);

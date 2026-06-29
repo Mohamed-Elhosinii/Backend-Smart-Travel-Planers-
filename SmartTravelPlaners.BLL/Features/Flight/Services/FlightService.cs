@@ -1,3 +1,4 @@
+
 using System.Text.Json;
 using SmartTravelPlaners.BLL.Features.Flight.DTOs;
 using SmartTravelPlaners.BLL.Features.Flight.Interfaces;
@@ -9,7 +10,8 @@ namespace SmartTravelPlaners.BLL.Features.Flight.Services
         private readonly HttpClient _httpClient;
 
         // AeroDataBox API credentials
-        private readonly string _aeroApiKey = "c91dbf09d0msh0fcf2521d3dc089p13afb5jsn5bc15c3837fd";
+        private readonly string _aeroApiKey = "13e422650dmsh4bab4335bf19a98p13c492jsn69f4bac78d92";
+       
 
         // AirLabs API credentials
         private readonly string _airlabsApiKey = "fbc05fb5-6fbb-4cb7-b06f-c0fe2a09c362";
@@ -30,7 +32,7 @@ namespace SmartTravelPlaners.BLL.Features.Flight.Services
             { "AUH", "OMAA" },
             { "AMM", "OJAI" },
             { "BEY", "OLBA" },
-           
+
         };
 
         public FlightService(HttpClient httpClient)
@@ -78,14 +80,14 @@ namespace SmartTravelPlaners.BLL.Features.Flight.Services
         // ============================================================
         public async Task<FlightSearchResult> SearchFlightsAsync(FlightSearchRequest request)
         {
-            // Resolve city names to IATA codes
             var departureIata = await GetIataCodeAsync(request.DepartureCity);
-            var arrivalIata = await GetIataCodeAsync(request.ArrivalCity);
+            await Task.Delay(1200);
 
-            // Always fetch outbound flights
+            var arrivalIata = await GetIataCodeAsync(request.ArrivalCity);
+            await Task.Delay(1200);
+
             var outbound = await GetFlightsAsync(departureIata, arrivalIata, request.DepartureDate);
 
-            // Fetch return flights only if RoundTrip
             List<FlightDto>? returnFlights = null;
 
             if (request.TripType == TripType.RoundTrip)
@@ -93,6 +95,7 @@ namespace SmartTravelPlaners.BLL.Features.Flight.Services
                 if (string.IsNullOrWhiteSpace(request.ReturnDate))
                     throw new Exception("ReturnDate is required for RoundTrip");
 
+                await Task.Delay(1200);
                 returnFlights = await GetFlightsAsync(arrivalIata, departureIata, request.ReturnDate);
             }
 
@@ -105,21 +108,29 @@ namespace SmartTravelPlaners.BLL.Features.Flight.Services
             };
         }
 
-        // ============================================================
-        // Fetch flights for a full day (split into two 12-hour windows)
-        // ============================================================
+
         private async Task<List<FlightDto>> GetFlightsAsync(
-            string departureIata,
-            string arrivalIata,
-            string date)
+     string departureIata,
+     string arrivalIata,
+     string date)
         {
             var icao = GetIcao(departureIata);
 
-            var morning = await FetchFromApi(icao, arrivalIata, departureIata,
-                $"{date}T00:00", $"{date}T12:00");
+            var morning = await FetchFromApi(
+                icao,
+                arrivalIata,
+                departureIata,
+                $"{date}T00:00",
+                $"{date}T11:00");
 
-            var evening = await FetchFromApi(icao, arrivalIata, departureIata,
-                $"{date}T12:00", $"{date}T23:59");
+            await Task.Delay(1200);
+
+            var evening = await FetchFromApi(
+                icao,
+                arrivalIata,
+                departureIata,
+                $"{date}T11:00",
+                $"{date}T23:00");
 
             return morning.Concat(evening).ToList();
         }
