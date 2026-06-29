@@ -41,6 +41,12 @@ using SmartTravelPlaners.BLL.Features.Admin.Interfaces;
 using SmartTravelPlaners.BLL.Features.Admin.Services;
 using System.ClientModel;
 using System.Text;
+using FluentValidation;
+using FluentValidation.AspNetCore;
+using Microsoft.AspNetCore.Mvc;
+using SmartTravelPlaners.BLL.DTOs.Common;
+using SmartTravelPlaners.PL.Middlewares;
+using SmartTravelPlaners.BLL.Validation.Auth;
 
 namespace SmartTravelPlaners.PL
 {
@@ -54,6 +60,23 @@ namespace SmartTravelPlaners.PL
             // 1. CONTROLLERS & SWAGGER
             // =======================================================
             builder.Services.AddControllers();
+            builder.Services.AddFluentValidationAutoValidation();
+            builder.Services.AddValidatorsFromAssemblyContaining<RegisterDtoValidator>();
+
+            builder.Services.Configure<ApiBehaviorOptions>(options =>
+            {
+                options.InvalidModelStateResponseFactory = context =>
+                {
+                    var errors = context.ModelState.Values
+                        .SelectMany(v => v.Errors)
+                        .Select(e => e.ErrorMessage)
+                        .ToList();
+
+                    var response = ApiResponse<object>.Failure(errors, "Validation failed");
+                    return new BadRequestObjectResult(response);
+                };
+            });
+
             builder.Services.AddCors(options =>
             {
                 options.AddPolicy("AllowAngular", policy =>
@@ -108,6 +131,10 @@ namespace SmartTravelPlaners.PL
                 options.Password.RequireUppercase = false;
                 options.Password.RequireNonAlphanumeric = false;
                 options.SignIn.RequireConfirmedEmail = true;
+
+                // Ensure 6-digit OTPs are generated instead of long tokens
+                options.Tokens.EmailConfirmationTokenProvider = TokenOptions.DefaultEmailProvider;
+                options.Tokens.PasswordResetTokenProvider = TokenOptions.DefaultEmailProvider;
             })
             .AddEntityFrameworkStores<ApplicationDbContext>()
             .AddDefaultTokenProviders();
@@ -134,6 +161,27 @@ namespace SmartTravelPlaners.PL
                     ValidAudience = jwtSettings["Audience"],
                     IssuerSigningKey = new SymmetricSecurityKey(
                         Encoding.UTF8.GetBytes(jwtSettings["SecretKey"]!))
+                };
+
+                options.Events = new JwtBearerEvents
+                {
+                    OnChallenge = async context =>
+                    {
+                        context.HandleResponse();
+                        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                        context.Response.ContentType = "application/json";
+                        var response = ApiResponse.Failure("You are not authorized to access this resource.");
+                        var json = System.Text.Json.JsonSerializer.Serialize(response, new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase });
+                        await context.Response.WriteAsync(json);
+                    },
+                    OnForbidden = async context =>
+                    {
+                        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                        context.Response.ContentType = "application/json";
+                        var response = ApiResponse.Failure("You do not have permission to access this resource.");
+                        var json = System.Text.Json.JsonSerializer.Serialize(response, new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase });
+                        await context.Response.WriteAsync(json);
+                    }
                 };
             })
             .AddGoogle(options =>
@@ -247,6 +295,8 @@ namespace SmartTravelPlaners.PL
             // 11. BUILD APP
             // =======================================================
             var app = builder.Build();
+
+            app.UseMiddleware<GlobalExceptionMiddleware>();
 
             // =======================================================
             // 12. MIDDLEWARE PIPELINE

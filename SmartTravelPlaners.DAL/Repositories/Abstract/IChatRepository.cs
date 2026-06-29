@@ -15,5 +15,6 @@ namespace SmartTravelPlaners.DAL.Repositories.Abstract
         Task AddMessageAsync(ChatMessage message);
 
         Task SaveChangesAsync();
+        Task<ChatSession?> GetSessionByTripIdAsync(Guid tripId, string userId);
     }
 }

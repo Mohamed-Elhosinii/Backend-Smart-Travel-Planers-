@@ -827,6 +827,9 @@ namespace SmartTravelPlaners.DAL.Migrations
                         .HasMaxLength(2048)
                         .HasColumnType("nvarchar(2048)");
 
+                    b.Property<string>("Country")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
