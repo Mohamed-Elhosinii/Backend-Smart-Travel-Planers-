@@ -571,10 +571,17 @@ Rules:
             return await _chatRepo.GetMessagesAsync(sessionId);
         }
 
-        public async Task<TripPlanDto?> GetTripPlanAsync(Guid tripId)
+        public async Task<TripPlanDto?> GetTripPlanAsync(Guid tripId, string userId)
         {
             try
             {
+                var profile = await _userProfileRepo.GetUserProfileWithPreferencesAsync(userId);
+                if (profile == null) return null;
+
+                var trip = await _tripRepo.GetByIdAsync(tripId);
+                if (trip == null || trip.UserId != profile.Id)
+                    return null;
+
                 return await _orchestrator.GetCurrentPlanAsync(tripId);
             }
             catch

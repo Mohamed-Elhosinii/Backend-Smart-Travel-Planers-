@@ -17,8 +17,9 @@ namespace SmartTravelPlaners.BLL.Services.Abstract
         Task SendForgotPasswordEmailAsync(ForgotPasswordDto dto);
         Task<bool> ResetPasswordAsync(ResetPasswordDto dto);
         Task<UserProfileDto> GetCurrentUserAsync(string userId);
+        Task UpdateProfileAsync(string userId, UpdateProfileDto dto);
 
 
-        Task<AuthResponseDto> OAuthLoginAsync(string email, string fullName, string provider);
+        Task<AuthResponseDto> OAuthLoginAsync(string email, string fullName, string provider, string providerKey);
     }
 }

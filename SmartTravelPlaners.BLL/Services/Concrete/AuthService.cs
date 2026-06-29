@@ -213,7 +213,7 @@ namespace SmartTravelPlaners.BLL.Services.Concrete
             return true;
         }
 
-        public async Task<AuthResponseDto> OAuthLoginAsync(string email, string fullName, string provider)
+        public async Task<AuthResponseDto> OAuthLoginAsync(string email, string fullName, string provider, string providerKey)
         {
             var user = await _userManager.FindByEmailAsync(email);
 
@@ -231,6 +231,16 @@ namespace SmartTravelPlaners.BLL.Services.Concrete
                 var result = await _userManager.CreateAsync(user);
                 if (!result.Succeeded)
                     throw new Exception(string.Join(", ", result.Errors.Select(e => e.Description)));
+            }
+
+            // Link the external login if it doesn't exist already
+            var existingLogins = await _userManager.GetLoginsAsync(user);
+            if (!existingLogins.Any(l => l.LoginProvider == provider && l.ProviderKey == providerKey))
+            {
+                var loginInfo = new UserLoginInfo(provider, providerKey, provider);
+                var addLoginResult = await _userManager.AddLoginAsync(user, loginInfo);
+                if (!addLoginResult.Succeeded)
+                    throw new Exception(string.Join(", ", addLoginResult.Errors.Select(e => e.Description)));
             }
 
             // Ensure UserProfile exists (fixes accounts that were created without one)
@@ -254,16 +264,61 @@ namespace SmartTravelPlaners.BLL.Services.Concrete
 
         public async Task<UserProfileDto> GetCurrentUserAsync(string userId)
         {
-            var user = await _userManager.FindByIdAsync(userId);
+            var user = await _context.Users
+                .Include(u => u.Profile)
+                    .ThenInclude(p => p.Subscriptions)
+                        .ThenInclude(s => s.Plan)
+                .FirstOrDefaultAsync(u => u.Id == userId);
+
             if (user == null) throw new Exception("User not found");
+
+            var nameParts = user.FullName?.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries) ?? new[] { "User", "" };
+            var firstName = nameParts.Length > 0 ? nameParts[0] : "";
+            var lastName = nameParts.Length > 1 ? nameParts[1] : "";
+
+            var activeSub = user.Profile?.Subscriptions
+                .FirstOrDefault(s => s.Status == DAL.Enums.SubscriptionStatus.Active && s.CurrentPeriodEnd >= DateTime.UtcNow);
 
             return new UserProfileDto
             {
                 UserId = user.Id,
-                FullName = user.FullName,
+                FirstName = firstName,
+                LastName = lastName,
                 Email = user.Email!,
-                EmailConfirmed = user.EmailConfirmed
+                EmailConfirmed = user.EmailConfirmed,
+                PhoneNumber = user.PhoneNumber,
+                Country = user.Profile?.Country,
+                CurrentPlan = activeSub?.Plan?.Name ?? "Free Plan"
             };
+        }
+
+        public async Task UpdateProfileAsync(string userId, UpdateProfileDto dto)
+        {
+            var user = await _context.Users
+                .Include(u => u.Profile)
+                .FirstOrDefaultAsync(u => u.Id == userId);
+
+            if (user == null) throw new Exception("User not found");
+
+            user.FullName = $"{dto.FirstName.Trim()} {dto.LastName.Trim()}".Trim();
+            user.PhoneNumber = dto.PhoneNumber;
+
+            if (user.Profile != null)
+            {
+                user.Profile.Country = dto.Country;
+            }
+            else
+            {
+                user.Profile = new UserProfile
+                {
+                    Id = Guid.NewGuid(),
+                    AspNetUserId = user.Id,
+                    Country = dto.Country
+                };
+                _context.UserProfiles.Add(user.Profile);
+            }
+
+            await _context.SaveChangesAsync();
         }
 
 

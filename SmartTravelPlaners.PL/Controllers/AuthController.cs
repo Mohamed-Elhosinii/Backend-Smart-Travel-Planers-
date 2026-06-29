@@ -184,8 +184,9 @@ namespace SmartTravelPlaners.PL.Controllers
 
                 var email = result.Principal.FindFirstValue(ClaimTypes.Email)!;
                 var fullName = result.Principal.FindFirstValue(ClaimTypes.Name)!;
+                var providerKey = result.Principal.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
-                var response = await _authService.OAuthLoginAsync(email, fullName, "Google");
+                var response = await _authService.OAuthLoginAsync(email, fullName, "Google", providerKey);
 
                 // Redirect back to Angular app with tokens in query params
                 var redirectUrl = $"http://localhost:4200/google-callback" +
@@ -214,6 +215,23 @@ namespace SmartTravelPlaners.PL.Controllers
                 var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
                 var result = await _authService.GetCurrentUserAsync(userId!);
                 return Ok(ApiResponse<UserProfileDto>.Success(result));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse.Failure(ex.Message));
+            }
+        }
+        [HttpPut("me")]
+        [Authorize]
+        [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> UpdateCurrentUser([FromBody] UpdateProfileDto dto)
+        {
+            try
+            {
+                var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+                await _authService.UpdateProfileAsync(userId!, dto);
+                return Ok(ApiResponse.Success("Profile updated successfully"));
             }
             catch (Exception ex)
             {

@@ -76,8 +76,11 @@ namespace SmartTravelPlaners.PL.Controllers
         [HttpGet("plan/{tripId}")]
         public async Task<IActionResult> GetPlan(Guid tripId)
         {
-            var plan = await _chatService.GetTripPlanAsync(tripId);
-            if (plan == null) return NotFound("Plan not ready yet.");
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (userId == null) return Unauthorized();
+
+            var plan = await _chatService.GetTripPlanAsync(tripId, userId);
+            if (plan == null) return NotFound("Plan not ready yet or access denied.");
             return Ok(plan);
         }
 

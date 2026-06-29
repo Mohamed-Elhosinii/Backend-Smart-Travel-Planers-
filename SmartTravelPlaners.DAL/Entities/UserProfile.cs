@@ -10,6 +10,7 @@ namespace SmartTravelPlaners.DAL.Entities
 
         public string? PreferredCurrency { get; set; }  
         public string? AvatarUrl { get; set; }
+        public string? Country { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         // Navigation
