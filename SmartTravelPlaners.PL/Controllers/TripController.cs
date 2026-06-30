@@ -57,5 +57,40 @@ namespace SmartTravelPlaners.PL.Controllers
                 return BadRequest(new { message = ex.Message });
             }
         }
+
+        [HttpGet]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        public async Task<IActionResult> GetTrips(
+            [FromServices] SmartTravelPlaners.DAL.Repositories.Abstract.ITripRepository tripRepo,
+            [FromServices] SmartTravelPlaners.DAL.Repositories.Abstract.IUserProfileRepository userProfileRepo)
+        {
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (userId == null) return Unauthorized();
+
+            var profile = await userProfileRepo.GetUserProfileWithPreferencesAsync(userId);
+            if (profile == null) return Unauthorized();
+
+            var trips = await tripRepo.GetUserTripsAsync(profile.Id);
+
+            var summaries = trips.Select(t => new SmartTravelPlaners.BLL.Features.Trips.DTOs.TripSummaryDto
+            {
+                Id = t.Id,
+                Destination = t.Destination,
+                OriginCity = t.OriginCity,
+                StartDate = t.StartDate.ToString("yyyy-MM-dd"),
+                EndDate = t.EndDate.ToString("yyyy-MM-dd"),
+                BudgetTotal = t.BudgetTotal,
+                BudgetSpent = t.BudgetSpent,
+                Status = t.Status.ToString(),
+                TravelStyle = t.Preferences
+                    .Where(p => p.Category.Equals("TravelStyle", StringComparison.OrdinalIgnoreCase))
+                    .Select(p => p.Value)
+                    .ToList(),
+                // Frontend currently uses coverImage, map it to null or fetch if available
+                CoverImage = null
+            }).ToList();
+
+            return Ok(summaries);
+        }
     }
 }

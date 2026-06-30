@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Moq;
 using SmartTravelPlaners.BLL.DTOs.Auth;
@@ -329,7 +329,16 @@ namespace SmartTravelPlaners.Tests.Features.Auth
                 .Setup(u => u.GetRolesAsync(It.IsAny<ApplicationUser>()))
                 .ReturnsAsync(new List<string>());
 
-            var result = await _service.OAuthLoginAsync(email, fullName, "Google");
+            _userManagerMock
+                .Setup(u => u.GetLoginsAsync(It.IsAny<ApplicationUser>()))
+                .ReturnsAsync(new List<UserLoginInfo>());
+
+            _userManagerMock
+                .Setup(u => u.AddLoginAsync(It.IsAny<ApplicationUser>(), It.IsAny<UserLoginInfo>()))
+                .ReturnsAsync(IdentityResult.Success);
+
+            var result = await _service.OAuthLoginAsync(email, fullName, "Google", "google-123");
+
 
             
             Assert.NotNull(result);

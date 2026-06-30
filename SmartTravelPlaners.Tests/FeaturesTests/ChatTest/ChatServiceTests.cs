@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
@@ -382,10 +382,19 @@ namespace SmartTravelPlaners.Tests.Features.Chat
         public async Task GetTripPlanAsync_ShouldReturnPlan_WhenExists()
         {
             var tripId = Guid.NewGuid();
+            var userId = "user-123";
+            var profileId = Guid.NewGuid();
+
+            _userProfileRepoMock.Setup(repo => repo.GetUserProfileWithPreferencesAsync(userId))
+                .ReturnsAsync(new UserProfile { Id = profileId, AspNetUserId = userId });
+
+            _tripRepoMock.Setup(repo => repo.GetByIdAsync(tripId))
+                .ReturnsAsync(new Trip { Id = tripId, UserId = profileId });
+
             _orchestratorMock.Setup(o => o.GetCurrentPlanAsync(tripId))
                 .ReturnsAsync(new TripPlanDto { TripId = tripId, Destination = "Paris" });
 
-            var result = await _service.GetTripPlanAsync(tripId);
+            var result = await _service.GetTripPlanAsync(tripId, userId);
 
             Assert.NotNull(result);
             Assert.Equal("Paris", result!.Destination);
@@ -395,10 +404,19 @@ namespace SmartTravelPlaners.Tests.Features.Chat
         public async Task GetTripPlanAsync_ShouldReturnNull_WhenThrows()
         {
             var tripId = Guid.NewGuid();
+            var userId = "user-123";
+            var profileId = Guid.NewGuid();
+
+            _userProfileRepoMock.Setup(repo => repo.GetUserProfileWithPreferencesAsync(userId))
+                .ReturnsAsync(new UserProfile { Id = profileId, AspNetUserId = userId });
+
+            _tripRepoMock.Setup(repo => repo.GetByIdAsync(tripId))
+                .ReturnsAsync(new Trip { Id = tripId, UserId = profileId });
+
             _orchestratorMock.Setup(o => o.GetCurrentPlanAsync(tripId))
                 .ThrowsAsync(new Exception("Not found"));
 
-            var result = await _service.GetTripPlanAsync(tripId);
+            var result = await _service.GetTripPlanAsync(tripId, userId);
 
             Assert.Null(result);
         }

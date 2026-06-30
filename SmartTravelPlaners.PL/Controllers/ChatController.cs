@@ -56,7 +56,7 @@ namespace SmartTravelPlaners.PL.Controllers
             {
                 id = s.Id,
                 date = s.UpdatedAt.ToString("MMM dd, yyyy"),
-                title = s.TripId != null ? "Trip Details" : "New Journey",
+                title = string.IsNullOrWhiteSpace(s.Title) ? "New Journey" : s.Title,
                 tripId = s.TripId
             });
 
@@ -127,9 +127,4 @@ namespace SmartTravelPlaners.PL.Controllers
         public string Message { get; set; } = string.Empty;
     }
 
-    public class LinkTripDto
-    {
-        public Guid SessionId { get; set; }
-        public Guid TripId { get; set; }
-    }
 }

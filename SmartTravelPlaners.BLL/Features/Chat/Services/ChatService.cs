@@ -77,14 +77,15 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
 
             var history = new ChatHistory();
 
-            history.AddSystemMessage(@" You are a smart travel assistant called TravelBot.
-Talk to the user in Arabic only, in a friendly and natural way. 
-Your job is to collect travel information from the user, and also help them
-modify an existing trip plan (hotel, activities, or basic trip fields).
+            history.AddSystemMessage(@"You are a smart travel assistant called TravelBot.
+Talk to the user in the SAME LANGUAGE they use to talk to you, in a friendly and natural way.
+You must be highly intelligent and flexible in understanding the user's input. They do not have to provide information in a strict format.
+Your job is to collect travel information to plan a new trip, or help them modify an existing trip plan.
 
+If the user is planning a new journey and they mention their destination and origin at any point, even if you are still collecting other info, you MUST output:
+TRIP_TITLE:{ ""title"": ""[Title based on user language, e.g. رحلة من القاهرة إلى باريس]"" }
 
 When ALL required fields for a NEW trip are collected, respond ONLY with:
-
 TRIP_READY:{
   ""destination"": """",
   ""originCity"": """",
@@ -94,42 +95,29 @@ TRIP_READY:{
   ""budgetTotal"": 1000,
   ""preferences"": []
 }
-If the user asks to see the current trip (e.g. ""ابعت الرحلة"", ""اعرض الرحلة"", ""show my trip""),
-respond ONLY with:
 
+If the user asks to see the current trip (e.g. ""ابعت الرحلة"", ""اعرض الرحلة"", ""show my trip""), respond ONLY with:
 TRIP_SHOW:{}
 
-If the user wants to change a simple field of an EXISTING trip (destination, dates,
-travelers, budget, originCity), respond ONLY with:
-
+If the user wants to change a simple field of an EXISTING trip (destination, dates, travelers, budget, originCity), respond ONLY with:
 TRIP_UPDATE_FIELD:{""field"": ""destination"", ""value"": ""Paris""}
 
-If the user wants a DIFFERENT HOTEL for their existing trip (e.g. ""غيرلي الفندق"",
-""مش عاجبني الفندق ده""), respond ONLY with:
-
+If the user wants a DIFFERENT HOTEL for their existing trip, respond ONLY with:
 TRIP_UPDATE_HOTEL:{}
 
-If the user wants a DIFFERENT FLIGHT for their existing trip (e.g. ""غيرلي الطيران"",
-""عايز رحلة طيران تانية""), respond ONLY with:
-
+If the user wants a DIFFERENT FLIGHT for their existing trip, respond ONLY with:
 TRIP_UPDATE_FLIGHT:{}
 
-If the user wants DIFFERENT ACTIVITIES for a specific day of their existing trip
-(e.g. ""عايز أنشطة او اماكن تانية يوم 2""), respond ONLY with:
-
+If the user wants DIFFERENT ACTIVITIES for a specific day of their existing trip, respond ONLY with:
 TRIP_UPDATE_ACTIVITIES:{""dayNumber"": 2}
-
-If the user already has a trip and wants to change ONE field, respond ONLY with:
-
-TRIP_UPDATE:{ ""field"": ""<destination|originCity|startDate|endDate|numTravelers|budgetTotal>"", ""value"": ""<new value>"" }
 
 Rules:
 - Always output ONLY one of the formats above when ready, nothing else.
 - Do NOT output any other text alongside these formats.
 - Destination MUST be in English city name only (e.g., Paris, Dubai, Cairo).
 - Dates MUST be in yyyy-MM-dd format.
-- If information is missing, continue asking naturally in Arabic.
-- Do NOT use multiple formats at once.");
+- If information is missing, continue asking naturally. Do NOT force the user to answer in a strict way.
+- You can understand conversational context intelligently.");
 
             // Let the model know whether a trip already exists so it picks TRIP_UPDATE vs TRIP_READY.
 
@@ -230,6 +218,32 @@ IMPORTANT RULES:
 
             bool HasKeyword(string keyword) =>
                 rawReply.Contains(keyword, StringComparison.Ordinal);
+
+            // Intercept TRIP_TITLE if present
+            if (HasKeyword("TRIP_TITLE:"))
+            {
+                var titleJson = ExtractAfter(rawReply, "TRIP_TITLE:");
+                if (titleJson != null)
+                {
+                    try
+                    {
+                        // Clean up to just the json block if there's text after
+                        var match = Regex.Match(titleJson, @"\{.*?\}", RegexOptions.Singleline);
+                        if (match.Success)
+                        {
+                            var titleObj = JsonSerializer.Deserialize<Dictionary<string, string>>(match.Value);
+                            if (titleObj != null && titleObj.TryGetValue("title", out var titleValue))
+                            {
+                                session.Title = titleValue;
+                                _unitOfWork.CompleteAsync().Wait(); // Save title immediately, we'll await later or just let the final save pick it up. Actually, better to just set it and let it save at the end.
+                            }
+                            // Strip out the TRIP_TITLE command from rawReply so the user doesn't see it if there's conversational text.
+                            rawReply = rawReply.Replace("TRIP_TITLE:" + match.Value, "").Trim();
+                        }
+                    }
+                    catch { /* ignore parse errors for title */ }
+                }
+            }
 
             // =========================
             // CREATE TRIP FLOW
@@ -637,6 +651,22 @@ IMPORTANT RULES:
             }
         }
         
+        public async Task LinkSessionToTripAsync(Guid sessionId, string userId, Guid tripId)
+        {
+            var session = await _chatRepo.GetSessionAsync(sessionId);
+            if (session == null)
+                throw new Exception("Session not found");
+
+            if (session.UserId != userId)
+                throw new UnauthorizedAccessException("You do not have access to this session.");
+
+            session.TripId = tripId;
+            session.Stage = ChatStage.PlanReady;
+            session.UpdatedAt = DateTime.UtcNow;
+
+            await _chatRepo.SaveChangesAsync();
+        }
+
         public async Task<ChatSession> GetOrCreateTripSessionAsync(Guid tripId, string userId)
         {
             // لو فيه Session موجودة للرحلة، رجعها
