@@ -1,4 +1,4 @@
-﻿using Moq;
+using Moq;
 using SmartTravelPlaners.BLL.Features.Flight.DTOs;
 using SmartTravelPlaners.BLL.Features.Flight.Interfaces;
 using SmartTravelPlaners.BLL.Features.Flight.Plugins;
@@ -45,9 +45,12 @@ namespace SmartTravelPlaners.Tests.Features.Orchestrator
             _placesApiMock = new Mock<IPlacesApiService>();
             _weatherApiMock = new Mock<IWeatherApiService>();
 
-            _hotelPlugin = new HotelPlugin(_hotelApiMock.Object);
+            _hotelPlugin = new HotelPlugin(
+                _hotelApiMock.Object,
+                new Mock<SmartTravelPlaners.BLL.Features.Hotel.Interfaces.IPlaceResolverService>().Object,
+                new Mock<SmartTravelPlaners.BLL.Features.Hotel.Interfaces.IHotelSearchService>().Object);
             _flightPlugin = new FlightPlugin(_flightApiMock.Object);
-            _placesPlugin = new PlacesPlugin(_placesApiMock.Object);
+            _placesPlugin = new PlacesPlugin(_placesApiMock.Object, new Mock<Microsoft.Extensions.Logging.ILogger<PlacesPlugin>>().Object);
             _weatherPlugin = new WeatherPlugin(_weatherApiMock.Object);
 
             _hotelRepoMock = new Mock<IGenericRepository<DAL.Entities.Hotel>>();
@@ -68,7 +71,8 @@ namespace SmartTravelPlaners.Tests.Features.Orchestrator
                 _hotelPlugin,
                 _flightPlugin,
                 _placesPlugin,
-                _weatherPlugin);
+                _weatherPlugin,
+                new Mock<Microsoft.Extensions.Logging.ILogger<TripOrchestratorService>>().Object);
         }
 
         private Trip MakeTrip(bool hasOrigin = true) => new Trip

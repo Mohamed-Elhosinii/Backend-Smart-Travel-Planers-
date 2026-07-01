@@ -194,8 +194,10 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 if (completed != task)
                     return new List<DayWeatherDto>();
 
-                var raw = await task;
-                if (raw is not VisualCrossingResponseDto response)
+                var rawJson = await task;
+                var response = TryDeserialize<VisualCrossingResponseDto>(rawJson);
+                
+                if (response is null || response.Days is null)
                     return new List<DayWeatherDto>();
 
                 return response.Days.Select(d => new DayWeatherDto
@@ -304,7 +306,9 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 if (result != task)
                     return new List<PlaceDto>();
 
-                return await task;
+                var rawJson = await task;
+                var deserialized = TryDeserialize<List<PlaceDto>>(rawJson) ?? new List<PlaceDto>();
+                return deserialized;
             }
             catch
             {
@@ -372,7 +376,8 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                     CheckOut = trip.EndDate,
                     PricePerNight = (decimal)(hotel.Price.PricePerNight ?? 0),
                     Stars = (int)Math.Round(hotel.Rating.Value ?? 0),
-                    Status = BookingStatus.Suggested
+                    Status = BookingStatus.Suggested,
+                    ImagesJson = hotel.Images != null ? System.Text.Json.JsonSerializer.Serialize(hotel.Images) : "[]"
                 };
 
                 await _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Hotel>().AddAsync(hotelEntity);
@@ -604,6 +609,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 currentHotel.Stars = (int)Math.Round(nextHotel.Rating.Value ?? 0);
                 currentHotel.CheckIn = trip.StartDate;   
                 currentHotel.CheckOut = trip.EndDate;    
+                currentHotel.ImagesJson = nextHotel.Images != null ? System.Text.Json.JsonSerializer.Serialize(nextHotel.Images) : "[]";
 
                 _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Hotel>().Update(currentHotel);
             }
@@ -621,7 +627,8 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                     CheckOut = trip.EndDate,
                     PricePerNight = (decimal)(nextHotel.Price.PricePerNight ?? 0),
                     Stars = (int)Math.Round(nextHotel.Rating.Value ?? 0),
-                    Status = BookingStatus.Suggested
+                    Status = BookingStatus.Suggested,
+                    ImagesJson = nextHotel.Images != null ? System.Text.Json.JsonSerializer.Serialize(nextHotel.Images) : "[]"
                 };
 
                 await _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Hotel>().AddAsync(hotelEntity);
@@ -734,7 +741,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
 
             return newActivities;
         }
-        public async Task SyncDayPlansAsync(Guid tripId)
+        public async Task SyncDayPlansAsync(Guid tripId, string? changedField = null)
         {
             var trip = await _unitOfWork.Trips.GetTripWithDetailsAsync(tripId)
                 ?? throw new Exception($"Trip {tripId} not found");
@@ -1021,7 +1028,8 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                     Name = hotelEntity.Name,
                     PricePerNight = (double)hotelEntity.PricePerNight,
                     Rating = hotelEntity.Stars,
-                    Address = hotelEntity.Address
+                    Address = hotelEntity.Address,
+                    Images = !string.IsNullOrEmpty(hotelEntity.ImagesJson) ? System.Text.Json.JsonSerializer.Deserialize<List<string>>(hotelEntity.ImagesJson) ?? new List<string>() : new List<string>()
                 },
                 Flight = flightEntity is null ? null : new TripFlightDto
                 {

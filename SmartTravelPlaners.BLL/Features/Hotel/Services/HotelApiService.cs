@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SmartTravelPlaners.BLL.Features.Hotel.DTOs;
 using SmartTravelPlaners.BLL.Features.Hotel.Interfaces;
@@ -30,7 +30,7 @@ namespace SmartTravelPlaners.BLL.Features.Hotel.Services
         public async Task<List<GoogleHotelDto>> GetAvailableHotelsAsync(
             string location, string checkIn, string checkOut, int adults = 2, int children = 0)
         {
-            var searchUrl = $"google_hotels/search?location={Uri.EscapeDataString(location)}" +
+            var searchUrl = $"v1/google_hotels/search?location={Uri.EscapeDataString(location)}" +
                             $"&check_in={checkIn}&check_out={checkOut}" +
                             $"&adults={adults}&children={children}&currency=USD";
 
@@ -40,6 +40,8 @@ namespace SmartTravelPlaners.BLL.Features.Hotel.Services
             {
                 var response = await _httpClient.GetAsync(searchUrl);
                 var responseString = await response.Content.ReadAsStringAsync();
+
+                _logger.LogInformation("StayAPI raw response: {RawJson}", responseString);
 
                 _logger.LogInformation("StayAPI Status Code: {StatusCode}", (int)response.StatusCode);
 

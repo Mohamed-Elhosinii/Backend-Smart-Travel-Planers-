@@ -22,6 +22,7 @@ namespace SmartTravelPlaners.DAL.Context
         public virtual DbSet<ChatSession> ChatSessions { get; set; }
         public virtual DbSet<ChatMessage> ChatMessages { get; set; }
         public virtual DbSet<PlaceCache> PlacesCache { get; set; }
+        public virtual DbSet<ExternalApiCache> ExternalApiCaches { get; set; }
         public virtual DbSet<RefreshToken> RefreshTokens { get; set; }
 
         // Subscription & Payments

@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SmartTravelPlaners.DAL.Context;
 
@@ -11,9 +12,11 @@ using SmartTravelPlaners.DAL.Context;
 namespace SmartTravelPlaners.DAL.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260701033215_AddHotelCachingSystem")]
+    partial class AddHotelCachingSystem
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -465,9 +468,6 @@ namespace SmartTravelPlaners.DAL.Migrations
 
                     b.Property<DateOnly>("CheckOut")
                         .HasColumnType("date");
-
-                    b.Property<string>("ImagesJson")
-                        .HasColumnType("nvarchar(max)");
 
                     b.Property<double?>("Lat")
                         .HasColumnType("float");

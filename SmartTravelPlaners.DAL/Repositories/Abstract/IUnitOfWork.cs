@@ -8,6 +8,8 @@ namespace SmartTravelPlaners.DAL.Repositories.Abstract
     {
         ITripRepository Trips { get; }
         IUserProfileRepository UserProfiles { get; }
+        IDestinationCacheRepository DestinationCache { get; }
+        IExternalApiCacheRepository ExternalApiCache { get; }
 
         IGenericRepository<TEntity> Repository<TEntity>() where TEntity : class;
         Task<int> CompleteAsync();

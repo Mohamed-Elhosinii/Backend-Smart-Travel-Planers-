@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using SmartTravelPlaners.BLL.Features.Chat.DTOs;
 using SmartTravelPlaners.BLL.Features.Orchestrator.Interfaces;
 using SmartTravelPlaners.BLL.Features.Subscription.Interfaces;
@@ -25,15 +26,21 @@ namespace SmartTravelPlaners.BLL.Features.Trips.Services
         private readonly IUnitOfWork _unitOfWork;
         private readonly IUsageLimitService _usageLimitService;
         private readonly IServiceProvider _serviceProvider;
+        private readonly IChatRepository _chatRepo;
+        private readonly ILogger<TripCreationService> _logger;
 
         public TripCreationService(
             IUnitOfWork unitOfWork,
             IUsageLimitService usageLimitService,
-            IServiceProvider serviceProvider)
+            IServiceProvider serviceProvider,
+            IChatRepository chatRepo,
+            ILogger<TripCreationService> logger)
         {
             _unitOfWork = unitOfWork;
             _usageLimitService = usageLimitService;
             _serviceProvider = serviceProvider;
+            _chatRepo = chatRepo;
+            _logger = logger;
         }
 
         public async Task<TripCreationResult> CreateAndBuildAsync(TripCreateDto dto, string userId)
@@ -51,6 +58,20 @@ namespace SmartTravelPlaners.BLL.Features.Trips.Services
 
             // 2) CREATE the Draft trip (same creation code path as the chat's TRIP_READY).
             var trip = await CreateTripAsync(dto, userId);
+
+            try
+            {
+                // Create session linking to the newly created trip immediately
+                var session = await _chatRepo.CreateSessionAsync(userId);
+                session.TripId = trip.Id;
+                session.Stage = ChatStage.PlanReady;
+                session.Title = trip.Title; // Will be "Trip to {Destination}"
+                await _chatRepo.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to create initial ChatSession for trip {TripId}. It will be created lazily later.", trip.Id);
+            }
 
             // 3) BACKGROUND ORCHESTRATOR CALL — same fire-and-forget Task.Run pattern as today.
             var tripId = trip.Id;

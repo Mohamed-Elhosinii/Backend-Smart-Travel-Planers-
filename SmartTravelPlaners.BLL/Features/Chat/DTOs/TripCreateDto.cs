@@ -15,6 +15,9 @@ namespace SmartTravelPlaners.BLL.Features.Chat.DTOs
         [Required]
         public string Destination { get; set; } = string.Empty;
 
+        public string? DestId { get; set; }
+        public string? DestType { get; set; }
+
         /// <summary>Optional. Null/empty → the trip is planned without a flight.</summary>
         public string? OriginCity { get; set; }
 

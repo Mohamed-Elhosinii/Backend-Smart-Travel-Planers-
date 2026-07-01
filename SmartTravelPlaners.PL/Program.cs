@@ -215,7 +215,7 @@ namespace SmartTravelPlaners.PL
             var githubToken = githubModelsConfig["Token"]!;         // GitHub PAT
             var githubModelId = githubModelsConfig["ModelId"]!;     // e.g. gpt-4o-mini
 
-            builder.Services.AddKernel();
+            var kernelBuilder = builder.Services.AddKernel();
 
             // Build an OpenAIClient pointed at the GitHub Models endpoint,
             // then register it as the chat completion service for the Kernel.
@@ -226,6 +226,8 @@ namespace SmartTravelPlaners.PL
                     new OpenAIClientOptions { Endpoint = new Uri(githubEndpoint) }
                 ));
 
+
+
             // =======================================================
             // 7. EXTERNAL APIS (Hotel / Flight / Places / Weather)
             // =======================================================
@@ -234,10 +236,16 @@ namespace SmartTravelPlaners.PL
             builder.Services.Configure<HotelApiSettings>(
                 builder.Configuration.GetSection("HotelApiSettings"));
             builder.Services.AddHttpClient<IHotelApiService, HotelApiService>();
+            builder.Services.AddHttpClient<IPlaceResolverService, PlaceResolverService>();
+            builder.Services.AddHttpClient<IHotelSearchService, HotelSearchService>();
+            builder.Services.AddHttpClient<IBookingLinksService, BookingLinksService>();
 
             // ---- Flight API ----
             builder.Services.AddHttpClient();
             builder.Services.AddHttpClient<IFlightService, FlightService>();
+
+            // Register TripPlugin as scoped so it can be resolved per-request in ChatService
+            builder.Services.AddScoped<SmartTravelPlaners.BLL.Features.Trips.Plugins.TripPlugin>();
 
             // Plugins consumed directly by the orchestrator (registered as concrete types).
             builder.Services.AddScoped<WeatherPlugin>();

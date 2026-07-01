@@ -35,6 +35,27 @@ namespace SmartTravelPlaners.BLL.Features.Flight.Services
 
         };
 
+        private static readonly Dictionary<string, string> CountryToCityIataFallback =
+            new(StringComparer.OrdinalIgnoreCase)
+        {
+            { "Egypt", "CAI" },
+            { "مصر", "CAI" },
+            { "UAE", "DXB" },
+            { "United Arab Emirates", "DXB" },
+            { "الامارات", "DXB" },
+            { "الإمارات", "DXB" },
+            { "Saudi Arabia", "RUH" },
+            { "KSA", "RUH" },
+            { "السعودية", "RUH" },
+            { "Turkey", "IST" },
+            { "تركيا", "IST" },
+            { "France", "CDG" },
+            { "فرنسا", "CDG" },
+            { "UK", "LHR" },
+            { "United Kingdom", "LHR" },
+            { "بريطانيا", "LHR" }
+        };
+
         public FlightService(HttpClient httpClient)
         {
             _httpClient = httpClient;
@@ -45,6 +66,14 @@ namespace SmartTravelPlaners.BLL.Features.Flight.Services
         // ============================================================
         public async Task<string> GetIataCodeAsync(string cityName)
         {
+            if (string.IsNullOrWhiteSpace(cityName))
+                throw new Exception("City name cannot be empty");
+
+            if (CountryToCityIataFallback.TryGetValue(cityName.Trim(), out var fallbackIata))
+            {
+                return fallbackIata;
+            }
+
             var url = $"https://airlabs.co/api/v9/suggest?query={Uri.EscapeDataString(cityName)}&api_key={_airlabsApiKey}";
 
             var response = await _httpClient.GetAsync(url);

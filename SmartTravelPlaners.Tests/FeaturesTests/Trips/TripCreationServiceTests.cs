@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using SmartTravelPlaners.BLL.Features.Chat.DTOs;
 using SmartTravelPlaners.BLL.Features.Orchestrator.Interfaces;
@@ -43,10 +43,15 @@ namespace SmartTravelPlaners.Tests.FeaturesTests.Trips
                 .Setup(s => s.GetService(typeof(IUsageLimitService)))
                 .Returns(_usageLimitMock.Object);
 
+            var chatRepoMock = new Mock<IChatRepository>();
+            var loggerMock = new Mock<Microsoft.Extensions.Logging.ILogger<TripCreationService>>();
+
             _service = new TripCreationService(
                 _uowMock.Object,
                 _usageLimitMock.Object,
-                _serviceProviderMock.Object);
+                _serviceProviderMock.Object,
+                chatRepoMock.Object,
+                loggerMock.Object);
         }
 
         private TripCreateDto MakeDto() => new TripCreateDto
