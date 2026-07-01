@@ -8,5 +8,6 @@ namespace SmartTravelPlaners.DAL.Repositories.Abstract
     {
         Task<Trip?> GetTripWithDetailsAsync(Guid tripId);
         Task<Trip?> GetTripWithDetailsNoTrackingAsync(Guid tripId);
+        Task<List<Trip>> GetUserTripsAsync(Guid profileId);
     }
 }

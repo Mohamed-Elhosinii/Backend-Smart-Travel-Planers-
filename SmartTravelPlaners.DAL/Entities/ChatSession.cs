@@ -6,6 +6,8 @@ namespace SmartTravelPlaners.DAL.Entities
     {
         public Guid Id { get; set; }
 
+        public string Title { get; set; } = "New Journey";
+
         // nullable - gets assigned after AI creates the Trip
         public Guid? TripId { get; set; }
         public Trip? Trip { get; set; }
