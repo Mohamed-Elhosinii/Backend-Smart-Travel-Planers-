@@ -5,6 +5,7 @@ using SmartTravelPlaners.BLL.Features.Hotel.Interfaces;
 using SmartTravelPlaners.BLL.Features.Hotel.Settings;
 using System.Net.Http.Json;
 using System.Text.Json;
+using SmartTravelPlaners.DAL.Repositories.Abstract;
 
 namespace SmartTravelPlaners.BLL.Features.Hotel.Services
 {
@@ -13,15 +14,18 @@ namespace SmartTravelPlaners.BLL.Features.Hotel.Services
         private readonly HttpClient _httpClient;
         private readonly HotelApiSettings _settings;
         private readonly ILogger<HotelApiService> _logger;
+        private readonly IUnitOfWork _unitOfWork;
 
         public HotelApiService(
             HttpClient httpClient,
             IOptions<HotelApiSettings> settings,
-            ILogger<HotelApiService> logger)
+            ILogger<HotelApiService> logger,
+            IUnitOfWork unitOfWork)
         {
             _httpClient = httpClient;
             _settings = settings.Value;
             _logger = logger;
+            _unitOfWork = unitOfWork;
 
             _httpClient.BaseAddress = new Uri(_settings.BaseUrl);
             _httpClient.DefaultRequestHeaders.Add("X-API-Key", _settings.ApiKey);
@@ -87,6 +91,24 @@ namespace SmartTravelPlaners.BLL.Features.Hotel.Services
             decimal? maxPrice, double? minRating, List<string>? amenities,
             int adults = 2, int children = 0)
         {
+            var cacheKey = $"hotels_filter:{location}:{checkIn}:{checkOut}:{maxPrice}:{minRating}";
+            var cachedData = await _unitOfWork.ExternalApiCache.GetAsync(cacheKey, "StayAPI_Filter");
+            if (!string.IsNullOrEmpty(cachedData))
+            {
+                try
+                {
+                    var cachedHotels = JsonSerializer.Deserialize<List<GoogleHotelDto>>(cachedData, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    if (cachedHotels != null)
+                    {
+                        return cachedHotels;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to deserialize cached hotel filter data.");
+                }
+            }
+
             var hotels = await GetAvailableHotelsAsync(location, checkIn, checkOut, adults, children);
 
             var filtered = hotels.AsEnumerable();
@@ -112,9 +134,17 @@ namespace SmartTravelPlaners.BLL.Features.Hotel.Services
                         h.Amenities.Any(a => a.Contains(req, StringComparison.OrdinalIgnoreCase))));
             }
 
-            return filtered
+            var result = filtered
                 .OrderByDescending(h => h.Rating.Value ?? 0)
                 .ToList();
+
+            if (result.Count > 0)
+            {
+                await _unitOfWork.ExternalApiCache.SetAsync(cacheKey, "StayAPI_Filter", JsonSerializer.Serialize(result), TimeSpan.FromDays(7));
+                await _unitOfWork.CompleteAsync();
+            }
+
+            return result;
         }
 
         public async Task<List<GoogleHotelDto>> GetHotelsNearLocationAsync(

@@ -35,19 +35,20 @@ namespace SmartTravelPlaners.BLL.Features.Hotel.Plugins
 
             var resolveResult = await _placeResolverService.ResolveAsync(city);
             
-            List<SmartTravelPlaners.BLL.Features.Hotel.DTOs.HotelDto> finalHotels;
+            List<SmartTravelPlaners.BLL.Features.Hotel.DTOs.GoogleHotelDto> finalHotels;
 
             if (resolveResult.Status == SmartTravelPlaners.BLL.Features.Hotel.DTOs.ResolutionStatus.Resolved && !string.IsNullOrEmpty(resolveResult.DestId))
             {
                 var searchResult = await _hotelSearchService.SearchAsync(
                     resolveResult.DestId, resolveResult.DestType, ci, co, adults, 1);
                 
-                finalHotels = searchResult.Hotels ?? new List<SmartTravelPlaners.BLL.Features.Hotel.DTOs.HotelDto>();
+                var hotelDtos = searchResult.Hotels ?? new List<SmartTravelPlaners.BLL.Features.Hotel.DTOs.HotelDto>();
+                finalHotels = MapHotelDtosToGoogleHotelDto(hotelDtos);
             }
             else
             {
                 var googleHotels = await _hotelApiService.GetAvailableHotelsAsync(city, checkIn, checkOut, adults, children);
-                finalHotels = MapGoogleHotelsToCommonDto(googleHotels ?? new List<SmartTravelPlaners.BLL.Features.Hotel.DTOs.GoogleHotelDto>());
+                finalHotels = googleHotels ?? new List<SmartTravelPlaners.BLL.Features.Hotel.DTOs.GoogleHotelDto>();
             }
 
             if (finalHotels.Count == 0)
@@ -56,34 +57,32 @@ namespace SmartTravelPlaners.BLL.Features.Hotel.Plugins
             return JsonSerializer.Serialize(finalHotels);
         }
 
-        private List<SmartTravelPlaners.BLL.Features.Hotel.DTOs.HotelDto> MapGoogleHotelsToCommonDto(List<SmartTravelPlaners.BLL.Features.Hotel.DTOs.GoogleHotelDto> googleHotels)
+        private List<SmartTravelPlaners.BLL.Features.Hotel.DTOs.GoogleHotelDto> MapHotelDtosToGoogleHotelDto(List<SmartTravelPlaners.BLL.Features.Hotel.DTOs.HotelDto> hotelDtos)
         {
-            return googleHotels.Select(h => new SmartTravelPlaners.BLL.Features.Hotel.DTOs.HotelDto
+            return hotelDtos.Select(h => new SmartTravelPlaners.BLL.Features.Hotel.DTOs.GoogleHotelDto
             {
                 HotelId = h.HotelId,
                 Name = h.Name,
-                Price = h.Price != null && h.Price.PricePerNight.HasValue ? new SmartTravelPlaners.BLL.Features.Hotel.DTOs.HotelPriceDto
+                Price = h.Price != null ? new SmartTravelPlaners.BLL.Features.Hotel.DTOs.HotelPrice
                 {
-                    Amount = (decimal)h.Price.PricePerNight.Value,
-                    Currency = h.Price.Currency ?? "USD",
-                    IsEstimated = false
-                } : null,
-                Rating = h.Rating != null && h.Rating.Value.HasValue ? new SmartTravelPlaners.BLL.Features.Hotel.DTOs.HotelReviewDto
+                    PricePerNight = (double)h.Price.Amount,
+                    Currency = h.Price.Currency
+                } : new SmartTravelPlaners.BLL.Features.Hotel.DTOs.HotelPrice(),
+                Rating = h.Rating != null ? new SmartTravelPlaners.BLL.Features.Hotel.DTOs.HotelRating
                 {
-                    Score = h.Rating.Value.Value,
-                    ReviewCount = h.Rating.Votes ?? 0,
-                    WeightedScore = h.Rating.Value.Value * Math.Log10(Math.Max(h.Rating.Votes ?? 1, 1))
-                } : null,
+                    Value = h.Rating.Score,
+                    Votes = h.Rating.ReviewCount,
+                    RatingMax = 10
+                } : new SmartTravelPlaners.BLL.Features.Hotel.DTOs.HotelRating(),
                 Images = h.Images ?? new List<string>(),
-                Location = new SmartTravelPlaners.BLL.Features.Hotel.DTOs.LocationDto
+                Location = new SmartTravelPlaners.BLL.Features.Hotel.DTOs.HotelLocation
                 {
                     Address = h.Location?.Address ?? "",
                     Latitude = h.Location?.Latitude ?? 0,
                     Longitude = h.Location?.Longitude ?? 0
                 },
                 Amenities = h.Amenities ?? new List<string>(),
-                Stars = h.Stars ?? 0,
-                Sources = new List<string> { "GoogleHotels" }
+                Stars = h.Stars,
             }).ToList();
         }
 
