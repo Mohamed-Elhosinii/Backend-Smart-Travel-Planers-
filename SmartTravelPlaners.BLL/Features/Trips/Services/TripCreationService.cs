@@ -45,58 +45,81 @@ namespace SmartTravelPlaners.BLL.Features.Trips.Services
 
         public async Task<TripCreationResult> CreateAndBuildAsync(TripCreateDto dto, string userId)
         {
-            // 1) USAGE LIMIT — the SAME check the chat runs before creating a trip.
-            var canTrip = await _usageLimitService.CanGenerateTripAsync(userId);
-            if (!canTrip)
-            {
-                return new TripCreationResult
-                {
-                    LimitReached = true,
-                    Message = LimitReachedMessage
-                };
-            }
-
-            // 2) CREATE the Draft trip (same creation code path as the chat's TRIP_READY).
-            var trip = await CreateTripAsync(dto, userId);
-
             try
             {
-                // Create session linking to the newly created trip immediately
-                var session = await _chatRepo.CreateSessionAsync(userId);
-                session.TripId = trip.Id;
-                session.Stage = ChatStage.PlanReady;
-                session.Title = trip.Title; // Will be "Trip to {Destination}"
-                await _chatRepo.SaveChangesAsync();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to create initial ChatSession for trip {TripId}. It will be created lazily later.", trip.Id);
-            }
+                _logger.LogInformation("Trip creation initiated. UserId: {UserId}, Destination: {Destination}", userId, dto.Destination);
 
-            // 3) BACKGROUND ORCHESTRATOR CALL — same fire-and-forget Task.Run pattern as today.
-            var tripId = trip.Id;
-            _ = Task.Run(async () =>
-            {
+                // 1) USAGE LIMIT — the SAME check the chat runs before creating a trip.
+                var canTrip = await _usageLimitService.CanGenerateTripAsync(userId);
+                if (!canTrip)
+                {
+                    _logger.LogWarning("Trip creation limit reached for UserId: {UserId}", userId);
+                    return new TripCreationResult
+                    {
+                        LimitReached = true,
+                        Message = LimitReachedMessage
+                    };
+                }
+
+                // 2) CREATE the Draft trip (same creation code path as the chat's TRIP_READY).
+                var trip = await CreateTripAsync(dto, userId);
+                _logger.LogInformation("Trip created successfully. TripId: {TripId}, UserId: {UserId}, Destination: {Destination}", 
+                    trip.Id, userId, trip.Destination);
+
                 try
                 {
-                    using var scope = _serviceProvider.CreateScope();
-                    var orchestrator = scope.ServiceProvider.GetRequiredService<ITripOrchestratorService>();
-                    var usageService = scope.ServiceProvider.GetRequiredService<IUsageLimitService>();
+                    // Create session linking to the newly created trip immediately
+                    var session = await _chatRepo.CreateSessionAsync(userId);
+                    session.TripId = trip.Id;
+                    session.Stage = ChatStage.PlanReady;
+                    session.Title = trip.Title; // Will be "Trip to {Destination}"
+                    await _chatRepo.SaveChangesAsync();
 
-                    await orchestrator.BuildTripPlanAsync(tripId);
-                    await usageService.IncrementTripUsageAsync(userId);
+                    _logger.LogInformation("Chat session created and linked to trip. SessionId: {SessionId}, TripId: {TripId}", session.Id, trip.Id);
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Orchestrator failed: {ex.Message}");
+                    _logger.LogWarning(ex, "Failed to create initial ChatSession for trip {TripId}. It will be created lazily later. Error: {ErrorMessage}", 
+                        trip.Id, ex.Message);
                 }
-            });
 
-            return new TripCreationResult
+                // 3) BACKGROUND ORCHESTRATOR CALL — same fire-and-forget Task.Run pattern as today.
+                var tripId = trip.Id;
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        _logger.LogInformation("Background orchestrator started for TripId: {TripId}", tripId);
+
+                        using var scope = _serviceProvider.CreateScope();
+                        var orchestrator = scope.ServiceProvider.GetRequiredService<ITripOrchestratorService>();
+                        var usageService = scope.ServiceProvider.GetRequiredService<IUsageLimitService>();
+
+                        await orchestrator.BuildTripPlanAsync(tripId);
+                        _logger.LogInformation("Trip plan built successfully in background. TripId: {TripId}", tripId);
+
+                        await usageService.IncrementTripUsageAsync(userId);
+                        _logger.LogInformation("Trip usage incremented. UserId: {UserId}, TripId: {TripId}", userId, tripId);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Background orchestrator failed for TripId: {TripId}. Error: {ErrorMessage}", tripId, ex.Message);
+                    }
+                });
+
+                _logger.LogInformation("Trip creation completed. TripId: {TripId}, UserId: {UserId}", trip.Id, userId);
+
+                return new TripCreationResult
+                {
+                    TripId = trip.Id,
+                    Trip = trip
+                };
+            }
+            catch (Exception ex)
             {
-                TripId = trip.Id,
-                Trip = trip
-            };
+                _logger.LogError(ex, "Trip creation failed for UserId: {UserId}. Error: {ErrorMessage}", userId, ex.Message);
+                throw;
+            }
         }
 
         // Verbatim from the chat's CreateTripFromJsonAsync — minus the JSON deserialization,

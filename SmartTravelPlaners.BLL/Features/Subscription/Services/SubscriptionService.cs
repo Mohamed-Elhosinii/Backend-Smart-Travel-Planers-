@@ -1,3 +1,5 @@
+
+using Microsoft.Extensions.Logging;
 using SmartTravelPlaners.BLL.Features.Subscription.DTOs;
 using SmartTravelPlaners.BLL.Features.Subscription.Interfaces;
 using SmartTravelPlaners.DAL.Configurations;
@@ -12,15 +14,18 @@ namespace SmartTravelPlaners.BLL.Features.Subscription.Services
         private readonly IUnitOfWork _unitOfWork;
         private readonly IPaymobService _paymobService;
         private readonly IUsageLimitService _usageLimitService;
+        private readonly ILogger<SubscriptionService> _logger;
 
         public SubscriptionService(
             IUnitOfWork unitOfWork,
             IPaymobService paymobService,
-            IUsageLimitService usageLimitService)
+            IUsageLimitService usageLimitService,
+            ILogger<SubscriptionService> logger)
         {
             _unitOfWork = unitOfWork;
             _paymobService = paymobService;
             _usageLimitService = usageLimitService;
+            _logger = logger;
         }
 
         // =====================================================================
@@ -59,6 +64,9 @@ namespace SmartTravelPlaners.BLL.Features.Subscription.Services
 
             if (activeSub != null)
             {
+                _logger.LogInformation("Active subscription found for user {UserId}. Plan: {PlanId}, Status: {Status}",
+                    userId, activeSub.PlanId, activeSub.Status);
+
                 plan = await _unitOfWork.Repository<Plan>().GetByIdAsync(activeSub.PlanId)
                        ?? await GetFreePlanAsync();
                 status = activeSub.Status;
@@ -66,6 +74,8 @@ namespace SmartTravelPlaners.BLL.Features.Subscription.Services
             }
             else
             {
+                _logger.LogWarning("No active subscription found for user {UserId}. Falling back to Free plan.", userId);
+
                 // No active subscription — show Free plan info
                 plan = await GetFreePlanAsync();
                 status = SubscriptionStatus.Active;
@@ -92,6 +102,9 @@ namespace SmartTravelPlaners.BLL.Features.Subscription.Services
         // =====================================================================
         public async Task<string?> CreateSubscriptionAsync(string userId, Guid planId)
         {
+            _logger.LogInformation("Starting subscription creation for user {UserId} with plan {PlanId}.",
+                userId, planId);
+
             var plan = await _unitOfWork.Repository<Plan>().GetByIdAsync(planId)
                        ?? throw new Exception("Plan not found");
 
@@ -104,6 +117,9 @@ namespace SmartTravelPlaners.BLL.Features.Subscription.Services
 
             foreach (var existing in existingSubs)
             {
+                _logger.LogInformation("Cancelling existing subscription {SubscriptionId} for user {UserId}.",
+                    existing.Id, userId);
+
                 existing.Status = SubscriptionStatus.Cancelled;
                 _unitOfWork.Repository<DAL.Entities.Subscription>().Update(existing);
             }
@@ -127,6 +143,10 @@ namespace SmartTravelPlaners.BLL.Features.Subscription.Services
             if (plan.PriceMonthly == 0)
             {
                 await _unitOfWork.CompleteAsync();
+
+                _logger.LogInformation("Free subscription {SubscriptionId} created successfully for user {UserId}.",
+                    subscription.Id, userId);
+
                 return null;
             }
 
@@ -148,10 +168,22 @@ namespace SmartTravelPlaners.BLL.Features.Subscription.Services
             await _unitOfWork.CompleteAsync();
 
             // Initiate Paymob payment flow
-            var iframeUrl = await _paymobService.InitiatePaymentAsync(
-                userId, plan, subscription.Id, merchantOrderId);
+            try
+            {
+                var iframeUrl = await _paymobService.InitiatePaymentAsync(
+                    userId, plan, subscription.Id, merchantOrderId);
 
-            return iframeUrl;
+                _logger.LogInformation("Paid subscription {SubscriptionId} created successfully for user {UserId}. Payment initiated.",
+                    subscription.Id, userId);
+
+                return iframeUrl;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to initiate payment for subscription {SubscriptionId} and user {UserId}. Error: {ErrorMessage}",
+                    subscription.Id, userId, ex.Message);
+                throw;
+            }
         }
 
         // =====================================================================
@@ -159,11 +191,17 @@ namespace SmartTravelPlaners.BLL.Features.Subscription.Services
         // =====================================================================
         public async Task ActivateSubscriptionAsync(string paymobOrderId, string paymobTransactionId)
         {
+            _logger.LogInformation("Starting subscription activation for Paymob order {OrderId}.", paymobOrderId);
+
             var transactions = await _unitOfWork.Repository<PaymentTransaction>()
                 .FindAsync(pt => pt.PaymobOrderId == paymobOrderId);
 
-            var transaction = transactions.FirstOrDefault()
-                              ?? throw new Exception($"PaymentTransaction not found for order: {paymobOrderId}");
+            var transaction = transactions.FirstOrDefault();
+            if (transaction == null)
+            {
+                _logger.LogWarning("PaymentTransaction not found for Paymob order {OrderId}.", paymobOrderId);
+                throw new Exception($"PaymentTransaction not found for order: {paymobOrderId}");
+            }
 
             // Update the payment transaction
             transaction.PaymobTransactionId = paymobTransactionId;
@@ -172,8 +210,13 @@ namespace SmartTravelPlaners.BLL.Features.Subscription.Services
 
             // Activate the subscription
             var subscription = await _unitOfWork.Repository<DAL.Entities.Subscription>()
-                .GetByIdAsync(transaction.SubscriptionId)
-                ?? throw new Exception($"Subscription not found: {transaction.SubscriptionId}");
+                .GetByIdAsync(transaction.SubscriptionId);
+
+            if (subscription == null)
+            {
+                _logger.LogWarning("Subscription not found for transaction {TransactionId}.", transaction.Id);
+                throw new Exception($"Subscription not found: {transaction.SubscriptionId}");
+            }
 
             var now = DateTime.UtcNow;
             subscription.Status = SubscriptionStatus.Active;
@@ -181,7 +224,18 @@ namespace SmartTravelPlaners.BLL.Features.Subscription.Services
             subscription.CurrentPeriodEnd = now.AddMonths(1);
             _unitOfWork.Repository<DAL.Entities.Subscription>().Update(subscription);
 
-            await _unitOfWork.CompleteAsync();
+            try
+            {
+                await _unitOfWork.CompleteAsync();
+                _logger.LogInformation("Subscription {SubscriptionId} activated successfully for Paymob order {OrderId}.",
+                    subscription.Id, paymobOrderId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to activate subscription {SubscriptionId} for Paymob order {OrderId}. Error: {ErrorMessage}",
+                    subscription.Id, paymobOrderId, ex.Message);
+                throw;
+            }
         }
 
         // =====================================================================
@@ -189,11 +243,18 @@ namespace SmartTravelPlaners.BLL.Features.Subscription.Services
         // =====================================================================
         public async Task CancelSubscriptionAsync(string userId)
         {
+            _logger.LogInformation("Starting subscription cancellation for user {UserId}.", userId);
+
             var userProfile = await GetUserProfileAsync(userId);
 
             var subscriptions = await _unitOfWork.Repository<DAL.Entities.Subscription>()
                 .FindAsync(s => s.UserProfileId == userProfile.Id
                              && s.Status == SubscriptionStatus.Active);
+
+            if (!subscriptions.Any())
+            {
+                _logger.LogWarning("No active subscription found to cancel for user {UserId}.", userId);
+            }
 
             foreach (var sub in subscriptions)
             {
@@ -206,17 +267,32 @@ namespace SmartTravelPlaners.BLL.Features.Subscription.Services
                 {
                     // Refund via Paymob
                     await _paymobService.RefundPaymentAsync(paidTransaction.PaymobTransactionId, paidTransaction.Amount);
-                    
+
                     // Mark transaction as refunded
                     paidTransaction.Status = "refunded";
                     _unitOfWork.Repository<PaymentTransaction>().Update(paidTransaction);
+
+                    _logger.LogInformation("Refund processed for subscription {SubscriptionId} and user {UserId}.",
+                        sub.Id, userId);
                 }
 
                 sub.Status = SubscriptionStatus.Cancelled;
                 _unitOfWork.Repository<DAL.Entities.Subscription>().Update(sub);
+
+                _logger.LogInformation("Subscription {SubscriptionId} cancelled for user {UserId}.", sub.Id, userId);
             }
 
-            await _unitOfWork.CompleteAsync();
+            try
+            {
+                await _unitOfWork.CompleteAsync();
+                _logger.LogInformation("Subscription cancellation completed successfully for user {UserId}.", userId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to complete subscription cancellation for user {UserId}. Error: {ErrorMessage}",
+                    userId, ex.Message);
+                throw;
+            }
         }
 
         // =====================================================================
@@ -224,27 +300,45 @@ namespace SmartTravelPlaners.BLL.Features.Subscription.Services
         // =====================================================================
         public async Task EnsureDefaultSubscriptionAsync(string userId)
         {
+            _logger.LogInformation("Ensuring default Free subscription for user {UserId}.", userId);
+
             var userProfile = await GetUserProfileAsync(userId);
 
             // Check if user already has a subscription
             var existing = await _unitOfWork.Repository<DAL.Entities.Subscription>()
                 .FindAsync(s => s.UserProfileId == userProfile.Id);
 
-            if (existing.Any()) return;
-
-            var now = DateTime.UtcNow;
-            var subscription = new DAL.Entities.Subscription
+            if (existing.Any())
             {
-                Id = Guid.NewGuid(),
-                UserProfileId = userProfile.Id,
-                PlanId = PlanConfiguration.FreePlanId,
-                Status = SubscriptionStatus.Active,
-                CurrentPeriodStart = now,
-                CurrentPeriodEnd = now.AddYears(100) // Free plan never expires
-            };
+                _logger.LogInformation("User {UserId} already has subscription(s). Skipping default subscription creation.", userId);
+                return;
+            }
 
-            await _unitOfWork.Repository<DAL.Entities.Subscription>().AddAsync(subscription);
-            await _unitOfWork.CompleteAsync();
+            try
+            {
+                var now = DateTime.UtcNow;
+                var subscription = new DAL.Entities.Subscription
+                {
+                    Id = Guid.NewGuid(),
+                    UserProfileId = userProfile.Id,
+                    PlanId = PlanConfiguration.FreePlanId,
+                    Status = SubscriptionStatus.Active,
+                    CurrentPeriodStart = now,
+                    CurrentPeriodEnd = now.AddYears(100) // Free plan never expires
+                };
+
+                await _unitOfWork.Repository<DAL.Entities.Subscription>().AddAsync(subscription);
+                await _unitOfWork.CompleteAsync();
+
+                _logger.LogInformation("Default Free subscription {SubscriptionId} created successfully for user {UserId}.",
+                    subscription.Id, userId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to create default subscription for user {UserId}. Error: {ErrorMessage}",
+                    userId, ex.Message);
+                throw;
+            }
         }
 
         // =====================================================================

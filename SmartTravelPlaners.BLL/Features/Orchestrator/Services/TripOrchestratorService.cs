@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using SmartTravelPlaners.BLL.Features.Place.Plugins;
 using SmartTravelPlaners.BLL.Features.Flight.DTOs;
 using SmartTravelPlaners.BLL.Features.Flight.Plugins;
@@ -22,6 +23,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
         private readonly FlightPlugin _flightPlugin;
         private readonly PlacesPlugin _placesPlugin;
         private readonly WeatherPlugin _weatherPlugin;
+        private readonly ILogger<TripOrchestratorService> _logger;
 
         private static readonly JsonSerializerOptions JsonOptions = new()
         {
@@ -33,7 +35,8 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
             HotelPlugin hotelPlugin,
             FlightPlugin flightPlugin,
             PlacesPlugin placesPlugin,
-            WeatherPlugin weatherPlugin)
+            WeatherPlugin weatherPlugin,
+            ILogger<TripOrchestratorService> logger)
         {
             _unitOfWork = unitOfWork;
             _hotelPlugin = hotelPlugin;
@@ -41,83 +44,101 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
             _flightPlugin = flightPlugin;
             _placesPlugin = placesPlugin;
             _weatherPlugin = weatherPlugin;
+            _logger = logger;
         }
 
         public async Task<TripPlanDto> BuildTripPlanAsync(Guid tripId)
         {
-            var trip = await _unitOfWork.Trips.GetTripWithDetailsAsync(tripId)
-                ?? throw new Exception($"Trip {tripId} not found");
-
-            var checkIn = trip.StartDate.ToString("yyyy-MM-dd");
-            var checkOut = trip.EndDate.ToString("yyyy-MM-dd");
-            var numberOfNights = trip.EndDate.DayNumber - trip.StartDate.DayNumber;
-            var numberOfDays = Math.Max(numberOfNights, 1);
-
-            var hasOrigin = !string.IsNullOrWhiteSpace(trip.OriginCity);
-
-            decimal hotelBudget, activitiesBudget, flightBudget = 0;
-
-            if (hasOrigin)
+            try
             {
-                hotelBudget = BudgetAllocator.HotelBudget(trip.BudgetTotal);
-                flightBudget = BudgetAllocator.FlightBudget(trip.BudgetTotal);
-                activitiesBudget = BudgetAllocator.ActivitiesBudget(trip.BudgetTotal);
-            }
-            else
-            {
-                var (hb, ab) = BudgetAllocator.WithoutFlight(trip.BudgetTotal);
-                hotelBudget = hb;
-                activitiesBudget = ab;
-            }
+                _logger.LogInformation("Building trip plan. TripId: {TripId}", tripId);
 
-            var hotelDto = await SelectHotelAsync(trip, checkIn, checkOut, hotelBudget, numberOfNights);
+                var trip = await _unitOfWork.Trips.GetTripWithDetailsAsync(tripId)
+                    ?? throw new Exception($"Trip {tripId} not found");
 
+                var checkIn = trip.StartDate.ToString("yyyy-MM-dd");
+                var checkOut = trip.EndDate.ToString("yyyy-MM-dd");
+                var numberOfNights = trip.EndDate.DayNumber - trip.StartDate.DayNumber;
+                var numberOfDays = Math.Max(numberOfNights, 1);
 
-            FlightDto? flightDto = null;
+                var hasOrigin = !string.IsNullOrWhiteSpace(trip.OriginCity);
 
-            if (hasOrigin)
-            {
-                try
+                decimal hotelBudget, activitiesBudget, flightBudget = 0;
+
+                if (hasOrigin)
                 {
-                    flightDto = await SelectFlightAsync(trip, checkIn);
+                    hotelBudget = BudgetAllocator.HotelBudget(trip.BudgetTotal);
+                    flightBudget = BudgetAllocator.FlightBudget(trip.BudgetTotal);
+                    activitiesBudget = BudgetAllocator.ActivitiesBudget(trip.BudgetTotal);
                 }
-                catch (Exception ex)
+                else
                 {
-                    Console.WriteLine($"Flight failed but ignored: {ex.Message}");
-                    flightDto = null;
+                    var (hb, ab) = BudgetAllocator.WithoutFlight(trip.BudgetTotal);
+                    hotelBudget = hb;
+                    activitiesBudget = ab;
                 }
+
+                _logger.LogInformation("Budget allocated. Hotel: {HotelBudget}, Flight: {FlightBudget}, Activities: {ActivitiesBudget}", 
+                    hotelBudget, flightBudget, activitiesBudget);
+
+                var hotelDto = await SelectHotelAsync(trip, checkIn, checkOut, hotelBudget, numberOfNights);
+
+                FlightDto? flightDto = null;
+
+                if (hasOrigin)
+                {
+                    try
+                    {
+                        flightDto = await SelectFlightAsync(trip, checkIn);
+                        _logger.LogInformation("Flight selected. Airline: {Airline}, FlightNumber: {FlightNumber}", 
+                            flightDto?.AirlineName, flightDto?.FlightNumber);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Flight selection failed for TripId: {TripId}, but continuing with plan", tripId);
+                        flightDto = null;
+                    }
+                }
+
+                // Fetch the weather forecast and the day-by-day activities concurrently.
+                var weatherTask = GetWeatherAsync(trip.Destination, trip.StartDate, trip.EndDate);
+                var dayPlans = await BuildDayPlansAsync(trip, numberOfDays, activitiesBudget);
+                var weather = await weatherTask;
+
+                AttachWeatherToDays(dayPlans, weather);
+
+                _logger.LogInformation("Persisting plan data. DayCount: {DayCount}", dayPlans.Count);
+                await PersistPlanAsync(trip, hotelDto, flightDto, dayPlans, flightBudget, weather);
+
+                var estimatedTotal =
+                    (decimal)(hotelDto?.Price.PricePerNight ?? 0) * Math.Max(numberOfNights, 1)
+                    + (flightDto != null ? flightBudget : 0)
+                    + dayPlans.Sum(d => d.Activities.Sum(a => a.EstimatedCost));
+
+                var plan = new TripPlanDto
+                {
+                    TripId = trip.Id,
+                    Destination = trip.Destination,
+                    StartDate = trip.StartDate,
+                    EndDate = trip.EndDate,
+                    BudgetTotal = trip.BudgetTotal,
+                    EstimatedTotalCost = estimatedTotal,
+                    Hotel = hotelDto is null ? null : MapHotel(hotelDto),
+                    Flight = flightDto is null ? null : MapFlight(flightDto, flightBudget),
+                    Days = dayPlans,
+                    Weather = weather,
+                    Summary = BuildSummary(trip, hotelDto, flightDto, dayPlans)
+                };
+
+                _logger.LogInformation("Trip plan built successfully. TripId: {TripId}, EstimatedCost: {EstimatedCost}", tripId, estimatedTotal);
+
+                return plan;
             }
-
-            // Fetch the weather forecast and the day-by-day activities concurrently.
-            var weatherTask = GetWeatherAsync(trip.Destination, trip.StartDate, trip.EndDate);
-            var dayPlans = await BuildDayPlansAsync(trip, numberOfDays, activitiesBudget);
-            var weather = await weatherTask;
-
-            AttachWeatherToDays(dayPlans, weather);
-
-            await PersistPlanAsync(trip, hotelDto, flightDto, dayPlans, flightBudget, weather);
-
-            var estimatedTotal =
-                (decimal)(hotelDto?.Price.PricePerNight ?? 0) * Math.Max(numberOfNights, 1)
-                + (flightDto != null ? flightBudget : 0)
-                + dayPlans.Sum(d => d.Activities.Sum(a => a.EstimatedCost));
-
-            var plan = new TripPlanDto
+            catch (Exception ex)
             {
-                TripId = trip.Id,
-                Destination = trip.Destination,
-                StartDate = trip.StartDate,
-                EndDate = trip.EndDate,
-                BudgetTotal = trip.BudgetTotal,
-                EstimatedTotalCost = estimatedTotal,
-                Hotel = hotelDto is null ? null : MapHotel(hotelDto),
-                Flight = flightDto is null ? null : MapFlight(flightDto, flightBudget),
-                Days = dayPlans,
-                Weather = weather,
-                Summary = BuildSummary(trip, hotelDto, flightDto, dayPlans)
-            };
-
-            return plan;
+                _logger.LogError(ex, "Failed to build trip plan. TripId: {TripId}. Error: {ErrorMessage}", tripId, ex.Message);
+                throw;
+            }
         }
 
         private async Task<GoogleHotelDto?> SelectHotelAsync(

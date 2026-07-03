@@ -47,6 +47,8 @@ using Microsoft.AspNetCore.Mvc;
 using SmartTravelPlaners.BLL.DTOs.Common;
 using SmartTravelPlaners.PL.Middlewares;
 using SmartTravelPlaners.BLL.Validation.Auth;
+using Serilog;
+using Serilog.Events;
 
 namespace SmartTravelPlaners.PL
 {
@@ -55,6 +57,24 @@ namespace SmartTravelPlaners.PL
         public static void Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
+
+            // Configure Serilog as the logging provider
+            builder.Host.UseSerilog((hostingContext, services, loggerConfiguration) =>
+            {
+                var isDev = hostingContext.HostingEnvironment.IsDevelopment();
+                var minimumLevel = isDev ? LogEventLevel.Debug : LogEventLevel.Information;
+
+                var outputTemplate = "[{Timestamp:yyyy-MM-dd HH:mm:ss} {Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}";
+
+                loggerConfiguration
+                    .MinimumLevel.Is(minimumLevel)
+                    .Enrich.FromLogContext()
+                    .WriteTo.Console(outputTemplate: outputTemplate)
+                    .WriteTo.File(
+                        path: "logs/app-.txt",
+                        rollingInterval: RollingInterval.Day,
+                        outputTemplate: outputTemplate);
+            });
 
             // =======================================================
             // 1. CONTROLLERS & SWAGGER
@@ -309,6 +329,9 @@ namespace SmartTravelPlaners.PL
             // =======================================================
             // 12. MIDDLEWARE PIPELINE
             // =======================================================
+            // Serilog request logging (HTTP request summary)
+            app.UseSerilogRequestLogging();
+
             app.UseSwagger();
             app.UseSwaggerUI(c =>
             {
@@ -324,7 +347,16 @@ namespace SmartTravelPlaners.PL
             app.UseAuthentication();
             app.UseAuthorization();
             app.MapControllers();
-            app.Run();
+
+            try
+            {
+                app.Run();
+            }
+            finally
+            {
+                // Ensure any buffered events are flushed on shutdown
+                Log.CloseAndFlush();
+            }
         }
     }
 }

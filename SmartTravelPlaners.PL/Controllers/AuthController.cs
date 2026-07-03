@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication.Facebook;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using SmartTravelPlaners.BLL.DTOs.Auth;
 using SmartTravelPlaners.BLL.DTOs.Common;
 using SmartTravelPlaners.BLL.Services.Abstract;
@@ -16,11 +17,13 @@ namespace SmartTravelPlaners.PL.Controllers
     {
         private readonly IAuthService _authService;
         private readonly IConfiguration _configuration;
+        private readonly ILogger<AuthController> _logger;
 
-        public AuthController(IAuthService authService, IConfiguration configuration)
+        public AuthController(IAuthService authService, IConfiguration configuration, ILogger<AuthController> logger)
         {
             _authService = authService;
             _configuration = configuration;
+            _logger = logger;
         }
 
         [HttpPost("register")]
@@ -30,11 +33,14 @@ namespace SmartTravelPlaners.PL.Controllers
         {
             try
             {
+                _logger.LogInformation("User registration initiated for email: {Email}", dto.Email);
                 var result = await _authService.RegisterAsync(dto);
+                _logger.LogInformation("User registered successfully. UserId: {UserId}", result);
                 return Ok(ApiResponse<string>.Success(result, "Registration successful"));
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "User registration failed for email: {Email}. Error: {ErrorMessage}", dto.Email, ex.Message);
                 return BadRequest(ApiResponse.Failure(ex.Message));
             }
         }
@@ -46,11 +52,14 @@ namespace SmartTravelPlaners.PL.Controllers
         {
             try
             {
+                _logger.LogInformation("User login attempt for email: {Email}", dto.Email);
                 var result = await _authService.LoginAsync(dto);
+                _logger.LogInformation("User logged in successfully. UserId: {UserId}", result.UserId);
                 return Ok(ApiResponse<AuthResponseDto>.Success(result, "Login successful"));
             }
             catch (Exception ex)
             {
+                _logger.LogWarning("Login failed for email: {Email}. Error: {ErrorMessage}", dto.Email, ex.Message);
                 return BadRequest(ApiResponse.Failure(ex.Message));
             }
         }
@@ -62,11 +71,14 @@ namespace SmartTravelPlaners.PL.Controllers
         {
             try
             {
+                _logger.LogInformation("Token refresh requested");
                 var result = await _authService.RefreshTokenAsync(refreshToken);
+                _logger.LogInformation("Token refreshed successfully for UserId: {UserId}", result.UserId);
                 return Ok(ApiResponse<AuthResponseDto>.Success(result, "Token refreshed successfully"));
             }
             catch (Exception ex)
             {
+                _logger.LogWarning("Token refresh failed. Error: {ErrorMessage}", ex.Message);
                 return BadRequest(ApiResponse.Failure(ex.Message));
             }
         }
@@ -79,14 +91,21 @@ namespace SmartTravelPlaners.PL.Controllers
         {
             try
             {
+                var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+                _logger.LogInformation("User logout initiated. UserId: {UserId}", userId);
                 var result = await _authService.LogoutAsync(refreshToken);
                 if (!result)
+                {
+                    _logger.LogWarning("Logout failed due to invalid token for UserId: {UserId}", userId);
                     return BadRequest(ApiResponse.Failure("Invalid token"));
+                }
 
+                _logger.LogInformation("User logged out successfully. UserId: {UserId}", userId);
                 return Ok(ApiResponse.Success("Logged out successfully"));
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "Logout failed. Error: {ErrorMessage}", ex.Message);
                 return BadRequest(ApiResponse.Failure(ex.Message));
             }
         }
@@ -98,13 +117,20 @@ namespace SmartTravelPlaners.PL.Controllers
         {
             try
             {
+                _logger.LogInformation("Email confirmation initiated for UserId: {UserId}", dto.UserId);
                 var result = await _authService.ConfirmEmailAsync(dto);
                 if (!result) 
+                {
+                    _logger.LogWarning("Email confirmation failed for UserId: {UserId}", dto.UserId);
                     return BadRequest(ApiResponse.Failure("Email confirmation failed"));
+                }
+
+                _logger.LogInformation("Email confirmed successfully for UserId: {UserId}", dto.UserId);
                 return Ok(ApiResponse.Success("Email confirmed successfully"));
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "Email confirmation failed. Error: {ErrorMessage}", ex.Message);
                 return BadRequest(ApiResponse.Failure(ex.Message));
             }
         }
@@ -116,11 +142,14 @@ namespace SmartTravelPlaners.PL.Controllers
         {
             try
             {
+                _logger.LogInformation("Resend confirmation email requested for UserId: {UserId}", userId);
                 await _authService.SendConfirmEmailAsync(userId);
+                _logger.LogInformation("Confirmation email sent successfully to UserId: {UserId}", userId);
                 return Ok(ApiResponse.Success("Email sent successfully"));
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "Resend confirmation email failed for UserId: {UserId}. Error: {ErrorMessage}", userId, ex.Message);
                 return BadRequest(ApiResponse.Failure(ex.Message));
             }
         }
@@ -132,11 +161,14 @@ namespace SmartTravelPlaners.PL.Controllers
         {
             try
             {
+                _logger.LogInformation("Password reset requested for email: {Email}", dto.Email);
                 await _authService.SendForgotPasswordEmailAsync(dto);
+                _logger.LogInformation("Password reset email sent for email: {Email}", dto.Email);
                 return Ok(ApiResponse.Success("If this email exists, a reset link has been sent"));
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "Password reset request failed for email: {Email}. Error: {ErrorMessage}", dto.Email, ex.Message);
                 return BadRequest(ApiResponse.Failure(ex.Message));
             }
         }
@@ -148,11 +180,14 @@ namespace SmartTravelPlaners.PL.Controllers
         {
             try
             {
+                _logger.LogInformation("Password reset initiated");
                 var result = await _authService.ResetPasswordAsync(dto);
+                _logger.LogInformation("Password reset completed successfully");
                 return Ok(ApiResponse.Success("Password reset successfully"));
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "Password reset failed. Error: {ErrorMessage}", ex.Message);
                 return BadRequest(ApiResponse.Failure(ex.Message));
             }
         }
@@ -175,9 +210,11 @@ namespace SmartTravelPlaners.PL.Controllers
         {
             try
             {
+                _logger.LogInformation("Google authentication callback initiated");
                 var result = await HttpContext.AuthenticateAsync(GoogleDefaults.AuthenticationScheme);
                 if (!result.Succeeded)
                 {
+                    _logger.LogWarning("Google authentication failed");
                     // Redirect to Angular with error
                     return Redirect("http://localhost:4200/auth/login?error=google_auth_failed");
                 }
@@ -186,8 +223,10 @@ namespace SmartTravelPlaners.PL.Controllers
                 var fullName = result.Principal.FindFirstValue(ClaimTypes.Name)!;
                 var providerKey = result.Principal.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
+                _logger.LogInformation("Google user authenticated successfully. Email: {Email}", email);
                 var response = await _authService.OAuthLoginAsync(email, fullName, "Google", providerKey);
 
+                _logger.LogInformation("Google OAuth login completed successfully for UserId: {UserId}", response.UserId);
                 // Redirect back to Angular app with tokens in query params
                 var redirectUrl = $"http://localhost:4200/google-callback" +
                                   $"?userId={Uri.EscapeDataString(response.UserId)}" +
@@ -198,8 +237,9 @@ namespace SmartTravelPlaners.PL.Controllers
 
                 return Redirect(redirectUrl);
             }
-            catch
+            catch (Exception ex)
             {
+                _logger.LogError(ex, "Google authentication callback failed. Error: {ErrorMessage}", ex.Message);
                 return Redirect("http://localhost:4200/auth/login?error=google_auth_failed");
             }
         }
@@ -213,11 +253,14 @@ namespace SmartTravelPlaners.PL.Controllers
             try
             {
                 var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+                _logger.LogInformation("Current user profile retrieval requested for UserId: {UserId}", userId);
                 var result = await _authService.GetCurrentUserAsync(userId!);
+                _logger.LogInformation("Current user profile retrieved successfully for UserId: {UserId}", userId);
                 return Ok(ApiResponse<UserProfileDto>.Success(result));
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "Current user profile retrieval failed. Error: {ErrorMessage}", ex.Message);
                 return BadRequest(ApiResponse.Failure(ex.Message));
             }
         }
@@ -230,11 +273,14 @@ namespace SmartTravelPlaners.PL.Controllers
             try
             {
                 var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+                _logger.LogInformation("User profile update initiated for UserId: {UserId}", userId);
                 await _authService.UpdateProfileAsync(userId!, dto);
+                _logger.LogInformation("User profile updated successfully for UserId: {UserId}", userId);
                 return Ok(ApiResponse.Success("Profile updated successfully"));
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "User profile update failed. Error: {ErrorMessage}", ex.Message);
                 return BadRequest(ApiResponse.Failure(ex.Message));
             }
         }
