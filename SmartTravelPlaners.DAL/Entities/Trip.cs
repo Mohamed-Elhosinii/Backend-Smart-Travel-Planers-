@@ -25,6 +25,7 @@ namespace SmartTravelPlaners.DAL.Entities
         public ICollection<TripDay> Days { get; set; } = new HashSet<TripDay>();
         public ICollection<Hotel> Hotels { get; set; } = new HashSet<Hotel>();
         public ICollection<Flight> Flights { get; set; } = new HashSet<Flight>();
+        public ICollection<WeatherDay> WeatherDays { get; set; } = new HashSet<WeatherDay>();
         public ICollection<TripPreference> Preferences { get; set; } = new HashSet<TripPreference>();
         public ChatSession? ChatSession { get; set; }
     }

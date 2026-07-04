@@ -199,6 +199,10 @@ namespace SmartTravelPlaners.DAL.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
+                    b.Property<string>("TimeSlot")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<Guid>("TripDayId")
                         .HasColumnType("uniqueidentifier");
 
@@ -326,7 +330,11 @@ namespace SmartTravelPlaners.DAL.Migrations
                     b.Property<int>("Stage")
                         .HasColumnType("int");
 
-                    b.Property<Guid>("TripId")
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("TripId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime>("UpdatedAt")
@@ -339,11 +347,46 @@ namespace SmartTravelPlaners.DAL.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("TripId")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("[TripId] IS NOT NULL");
 
                     b.HasIndex("UserId");
 
                     b.ToTable("ChatSessions");
+                });
+
+            modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.ExternalApiCache", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CacheKey")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PayloadJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CacheKey", "Source")
+                        .IsUnique();
+
+                    b.ToTable("ExternalApiCaches");
                 });
 
             modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.Flight", b =>
@@ -423,6 +466,9 @@ namespace SmartTravelPlaners.DAL.Migrations
                     b.Property<DateOnly>("CheckOut")
                         .HasColumnType("date");
 
+                    b.Property<string>("ImagesJson")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<double?>("Lat")
                         .HasColumnType("float");
 
@@ -455,6 +501,44 @@ namespace SmartTravelPlaners.DAL.Migrations
                     b.ToTable("Hotels");
                 });
 
+            modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.PaymentTransaction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PaymobOrderId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("PaymobTransactionId")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<Guid>("SubscriptionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PaymobOrderId");
+
+                    b.HasIndex("SubscriptionId");
+
+                    b.ToTable("PaymentTransactions");
+                });
+
             modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.PlaceCache", b =>
                 {
                     b.Property<Guid>("Id")
@@ -476,6 +560,9 @@ namespace SmartTravelPlaners.DAL.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
 
+                    b.Property<DateTime?>("LastUsedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<double>("Lat")
                         .HasColumnType("float");
 
@@ -484,6 +571,10 @@ namespace SmartTravelPlaners.DAL.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("NormalizedQuery")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
@@ -507,7 +598,62 @@ namespace SmartTravelPlaners.DAL.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("NormalizedQuery");
+
                     b.ToTable("PlacesCache");
+                });
+
+            modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.Plan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("MaxMessagesPerMonth")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("MaxTripsPerMonth")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("PaymobPlanId")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<decimal>("PriceMonthly")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Plans");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("00000000-0000-0000-0000-000000000001"),
+                            MaxMessagesPerMonth = 30,
+                            MaxTripsPerMonth = 2,
+                            Name = "Free",
+                            PriceMonthly = 0m
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-0000-0000-000000000002"),
+                            MaxMessagesPerMonth = 300,
+                            MaxTripsPerMonth = 10,
+                            Name = "Plus",
+                            PriceMonthly = 4.99m
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-0000-0000-000000000003"),
+                            Name = "Pro",
+                            PriceMonthly = 12.99m
+                        });
                 });
 
             modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.RefreshToken", b =>
@@ -540,6 +686,42 @@ namespace SmartTravelPlaners.DAL.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("RefreshTokens");
+                });
+
+            modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.Subscription", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CurrentPeriodEnd")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CurrentPeriodStart")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PaymobSubscriptionId")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid>("PlanId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<Guid>("UserProfileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlanId");
+
+                    b.HasIndex("UserProfileId");
+
+                    b.ToTable("Subscriptions");
                 });
 
             modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.Trip", b =>
@@ -649,6 +831,38 @@ namespace SmartTravelPlaners.DAL.Migrations
                     b.ToTable("TripPreferences");
                 });
 
+            modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.UsageCounter", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("MessagesUsed")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<string>("PeriodMonth")
+                        .IsRequired()
+                        .HasMaxLength(7)
+                        .HasColumnType("nvarchar(7)");
+
+                    b.Property<int>("TripsUsed")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<Guid>("UserProfileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserProfileId", "PeriodMonth")
+                        .IsUnique();
+
+                    b.ToTable("UsageCounters");
+                });
+
             modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.UserProfile", b =>
                 {
                     b.Property<Guid>("Id")
@@ -663,6 +877,9 @@ namespace SmartTravelPlaners.DAL.Migrations
                         .HasMaxLength(2048)
                         .HasColumnType("nvarchar(2048)");
 
+                    b.Property<string>("Country")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -676,6 +893,47 @@ namespace SmartTravelPlaners.DAL.Migrations
                         .IsUnique();
 
                     b.ToTable("UserProfiles");
+                });
+
+            modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.WeatherDay", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Conditions")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<double>("Humidity")
+                        .HasColumnType("float");
+
+                    b.Property<string>("IconUrl")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<double>("PrecipProb")
+                        .HasColumnType("float");
+
+                    b.Property<double>("TempMax")
+                        .HasColumnType("float");
+
+                    b.Property<double>("TempMin")
+                        .HasColumnType("float");
+
+                    b.Property<Guid>("TripId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TripId");
+
+                    b.ToTable("WeatherDays");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
@@ -756,8 +1014,7 @@ namespace SmartTravelPlaners.DAL.Migrations
                     b.HasOne("SmartTravelPlaners.DAL.Entities.Trip", "Trip")
                         .WithOne("ChatSession")
                         .HasForeignKey("SmartTravelPlaners.DAL.Entities.ChatSession", "TripId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.HasOne("SmartTravelPlaners.DAL.Entities.ApplicationUser", "User")
                         .WithMany("ChatSessions")
@@ -792,6 +1049,17 @@ namespace SmartTravelPlaners.DAL.Migrations
                     b.Navigation("Trip");
                 });
 
+            modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.PaymentTransaction", b =>
+                {
+                    b.HasOne("SmartTravelPlaners.DAL.Entities.Subscription", "Subscription")
+                        .WithMany("PaymentTransactions")
+                        .HasForeignKey("SubscriptionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Subscription");
+                });
+
             modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.RefreshToken", b =>
                 {
                     b.HasOne("SmartTravelPlaners.DAL.Entities.ApplicationUser", "User")
@@ -801,6 +1069,25 @@ namespace SmartTravelPlaners.DAL.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.Subscription", b =>
+                {
+                    b.HasOne("SmartTravelPlaners.DAL.Entities.Plan", "Plan")
+                        .WithMany("Subscriptions")
+                        .HasForeignKey("PlanId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SmartTravelPlaners.DAL.Entities.UserProfile", "UserProfile")
+                        .WithMany("Subscriptions")
+                        .HasForeignKey("UserProfileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Plan");
+
+                    b.Navigation("UserProfile");
                 });
 
             modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.Trip", b =>
@@ -836,6 +1123,17 @@ namespace SmartTravelPlaners.DAL.Migrations
                     b.Navigation("Trip");
                 });
 
+            modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.UsageCounter", b =>
+                {
+                    b.HasOne("SmartTravelPlaners.DAL.Entities.UserProfile", "UserProfile")
+                        .WithMany("UsageCounters")
+                        .HasForeignKey("UserProfileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("UserProfile");
+                });
+
             modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.UserProfile", b =>
                 {
                     b.HasOne("SmartTravelPlaners.DAL.Entities.ApplicationUser", "AspNetUser")
@@ -845,6 +1143,17 @@ namespace SmartTravelPlaners.DAL.Migrations
                         .IsRequired();
 
                     b.Navigation("AspNetUser");
+                });
+
+            modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.WeatherDay", b =>
+                {
+                    b.HasOne("SmartTravelPlaners.DAL.Entities.Trip", "Trip")
+                        .WithMany("WeatherDays")
+                        .HasForeignKey("TripId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Trip");
                 });
 
             modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.ApplicationUser", b =>
@@ -859,6 +1168,16 @@ namespace SmartTravelPlaners.DAL.Migrations
                     b.Navigation("Messages");
                 });
 
+            modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.Plan", b =>
+                {
+                    b.Navigation("Subscriptions");
+                });
+
+            modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.Subscription", b =>
+                {
+                    b.Navigation("PaymentTransactions");
+                });
+
             modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.Trip", b =>
                 {
                     b.Navigation("ChatSession");
@@ -870,6 +1189,8 @@ namespace SmartTravelPlaners.DAL.Migrations
                     b.Navigation("Hotels");
 
                     b.Navigation("Preferences");
+
+                    b.Navigation("WeatherDays");
                 });
 
             modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.TripDay", b =>
@@ -879,7 +1200,11 @@ namespace SmartTravelPlaners.DAL.Migrations
 
             modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.UserProfile", b =>
                 {
+                    b.Navigation("Subscriptions");
+
                     b.Navigation("Trips");
+
+                    b.Navigation("UsageCounters");
                 });
 #pragma warning restore 612, 618
         }

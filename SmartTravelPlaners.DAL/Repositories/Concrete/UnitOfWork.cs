@@ -23,6 +23,12 @@ namespace SmartTravelPlaners.DAL.Repositories.Concrete
         public IUserProfileRepository UserProfiles => 
             (IUserProfileRepository)GetOrAddRepository<UserProfile>(() => new UserProfileRepository(_context));
 
+        public IDestinationCacheRepository DestinationCache =>
+            (IDestinationCacheRepository)GetOrAddRepository<PlaceCache>(() => new DestinationCacheRepository(_context));
+
+        public IExternalApiCacheRepository ExternalApiCache =>
+            (IExternalApiCacheRepository)GetOrAddRepository<Entities.ExternalApiCache>(() => new ExternalApiCacheRepository(_context));
+
         public IGenericRepository<TEntity> Repository<TEntity>() where TEntity : class
         {
             var type = typeof(TEntity);

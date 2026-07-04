@@ -20,5 +20,6 @@ namespace SmartTravelPlaners.DAL.Entities
         public string? BookingUrl { get; set; }
         public int Stars { get; set; }              
         public BookingStatus Status { get; set; } = BookingStatus.Suggested;
+        public string? ImagesJson { get; set; }
     }
 }
