@@ -355,6 +355,40 @@ namespace SmartTravelPlaners.DAL.Migrations
                     b.ToTable("ChatSessions");
                 });
 
+            modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.ExternalApiCache", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CacheKey")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PayloadJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CacheKey", "Source")
+                        .IsUnique();
+
+                    b.ToTable("ExternalApiCaches");
+                });
+
             modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.Flight", b =>
                 {
                     b.Property<Guid>("Id")
@@ -431,6 +465,9 @@ namespace SmartTravelPlaners.DAL.Migrations
 
                     b.Property<DateOnly>("CheckOut")
                         .HasColumnType("date");
+
+                    b.Property<string>("ImagesJson")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<double?>("Lat")
                         .HasColumnType("float");
@@ -523,6 +560,9 @@ namespace SmartTravelPlaners.DAL.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
 
+                    b.Property<DateTime?>("LastUsedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<double>("Lat")
                         .HasColumnType("float");
 
@@ -531,6 +571,10 @@ namespace SmartTravelPlaners.DAL.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("NormalizedQuery")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
@@ -553,6 +597,8 @@ namespace SmartTravelPlaners.DAL.Migrations
                         .HasColumnType("nvarchar(100)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("NormalizedQuery");
 
                     b.ToTable("PlacesCache");
                 });

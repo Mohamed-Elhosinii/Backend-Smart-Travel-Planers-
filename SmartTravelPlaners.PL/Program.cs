@@ -47,6 +47,8 @@ using Microsoft.AspNetCore.Mvc;
 using SmartTravelPlaners.BLL.DTOs.Common;
 using SmartTravelPlaners.PL.Middlewares;
 using SmartTravelPlaners.BLL.Validation.Auth;
+using Serilog;
+using Serilog.Events;
 
 namespace SmartTravelPlaners.PL
 {
@@ -55,6 +57,24 @@ namespace SmartTravelPlaners.PL
         public static void Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
+
+            // Configure Serilog as the logging provider
+            builder.Host.UseSerilog((hostingContext, services, loggerConfiguration) =>
+            {
+                var isDev = hostingContext.HostingEnvironment.IsDevelopment();
+                var minimumLevel = isDev ? LogEventLevel.Debug : LogEventLevel.Information;
+
+                var outputTemplate = "[{Timestamp:yyyy-MM-dd HH:mm:ss} {Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}";
+
+                loggerConfiguration
+                    .MinimumLevel.Is(minimumLevel)
+                    .Enrich.FromLogContext()
+                    .WriteTo.Console(outputTemplate: outputTemplate)
+                    .WriteTo.File(
+                        path: "logs/app-.txt",
+                        rollingInterval: RollingInterval.Day,
+                        outputTemplate: outputTemplate);
+            });
 
             // =======================================================
             // 1. CONTROLLERS & SWAGGER
@@ -215,7 +235,7 @@ namespace SmartTravelPlaners.PL
             var githubToken = githubModelsConfig["Token"]!;         // GitHub PAT
             var githubModelId = githubModelsConfig["ModelId"]!;     // e.g. gpt-4o-mini
 
-            builder.Services.AddKernel();
+            var kernelBuilder = builder.Services.AddKernel();
 
             // Build an OpenAIClient pointed at the GitHub Models endpoint,
             // then register it as the chat completion service for the Kernel.
@@ -226,6 +246,8 @@ namespace SmartTravelPlaners.PL
                     new OpenAIClientOptions { Endpoint = new Uri(githubEndpoint) }
                 ));
 
+
+
             // =======================================================
             // 7. EXTERNAL APIS (Hotel / Flight / Places / Weather)
             // =======================================================
@@ -234,10 +256,16 @@ namespace SmartTravelPlaners.PL
             builder.Services.Configure<HotelApiSettings>(
                 builder.Configuration.GetSection("HotelApiSettings"));
             builder.Services.AddHttpClient<IHotelApiService, HotelApiService>();
+            builder.Services.AddHttpClient<IPlaceResolverService, PlaceResolverService>();
+            builder.Services.AddHttpClient<IHotelSearchService, HotelSearchService>();
+            builder.Services.AddHttpClient<IBookingLinksService, BookingLinksService>();
 
             // ---- Flight API ----
             builder.Services.AddHttpClient();
             builder.Services.AddHttpClient<IFlightService, FlightService>();
+
+            // Register TripPlugin as scoped so it can be resolved per-request in ChatService
+            builder.Services.AddScoped<SmartTravelPlaners.BLL.Features.Trips.Plugins.TripPlugin>();
 
             // Plugins consumed directly by the orchestrator (registered as concrete types).
             builder.Services.AddScoped<WeatherPlugin>();
@@ -301,6 +329,9 @@ namespace SmartTravelPlaners.PL
             // =======================================================
             // 12. MIDDLEWARE PIPELINE
             // =======================================================
+            // Serilog request logging (HTTP request summary)
+            app.UseSerilogRequestLogging();
+
             app.UseSwagger();
             app.UseSwaggerUI(c =>
             {
@@ -316,7 +347,16 @@ namespace SmartTravelPlaners.PL
             app.UseAuthentication();
             app.UseAuthorization();
             app.MapControllers();
-            app.Run();
+
+            try
+            {
+                app.Run();
+            }
+            finally
+            {
+                // Ensure any buffered events are flushed on shutdown
+                Log.CloseAndFlush();
+            }
         }
     }
 }

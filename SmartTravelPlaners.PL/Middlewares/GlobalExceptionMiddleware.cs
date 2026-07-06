@@ -23,13 +23,19 @@ namespace SmartTravelPlaners.PL.Middlewares
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "An unhandled exception occurred: {Message}", ex.Message);
-                await HandleExceptionAsync(context, ex);
+                await HandleExceptionAsync(context, ex, _logger);
             }
         }
 
-        private static Task HandleExceptionAsync(HttpContext context, Exception exception)
+        private Task HandleExceptionAsync(HttpContext context, Exception exception, ILogger logger)
         {
+            var httpMethod = context.Request.Method;
+            var requestPath = context.Request.Path;
+
+            logger.LogError(exception,
+                "Unhandled exception occurred. Method: {HttpMethod}, Path: {RequestPath}, ExceptionType: {ExceptionType}, Message: {ExceptionMessage}",
+                httpMethod, requestPath, exception.GetType().Name, exception.Message);
+
             context.Response.ContentType = "application/json";
             context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
 
@@ -40,6 +46,9 @@ namespace SmartTravelPlaners.PL.Middlewares
 
             var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
             var json = JsonSerializer.Serialize(response, options);
+
+            logger.LogError("Returning error response to client. StatusCode: {StatusCode}, RequestId: {RequestId}",
+                context.Response.StatusCode, context.TraceIdentifier);
 
             return context.Response.WriteAsync(json);
         }

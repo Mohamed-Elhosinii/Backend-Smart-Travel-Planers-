@@ -38,6 +38,9 @@ namespace SmartTravelPlaners.BLL.Features.Subscription.Services
 
         private async void DoWork(object? state)
         {
+            var jobStartTime = DateTime.UtcNow;
+            _logger.LogInformation("SubscriptionExpiryJob started execution at {StartTime}.", jobStartTime);
+
             try
             {
                 using var scope = _scopeFactory.CreateScope();
@@ -45,15 +48,19 @@ namespace SmartTravelPlaners.BLL.Features.Subscription.Services
 
                 var now = DateTime.UtcNow;
 
+                _logger.LogInformation("Searching for expired subscriptions with CurrentPeriodEnd before {CheckTime}.", now);
+
                 var expiredSubs = await unitOfWork.Repository<DAL.Entities.Subscription>()
                     .FindAsync(s => s.CurrentPeriodEnd < now
                                  && s.Status == SubscriptionStatus.Active);
 
                 var expiredList = expiredSubs.ToList();
 
+                _logger.LogInformation("Found {ExpiredCount} expired subscription(s) to process.", expiredList.Count);
+
                 if (expiredList.Count == 0)
                 {
-                    _logger.LogInformation("SubscriptionExpiryJob: No expired subscriptions found.");
+                    _logger.LogInformation("No expired subscriptions to process. SubscriptionExpiryJob completed successfully at {CompletionTime}.", DateTime.UtcNow);
                     return;
                 }
 
@@ -63,19 +70,20 @@ namespace SmartTravelPlaners.BLL.Features.Subscription.Services
                     unitOfWork.Repository<DAL.Entities.Subscription>().Update(sub);
 
                     _logger.LogInformation(
-                        "Subscription {SubId} for UserProfile {UserProfileId} expired. " +
-                        "Period ended {PeriodEnd}.",
+                        "Subscription {SubscriptionId} marked as expired. UserProfile: {UserProfileId}, Period ended: {PeriodEnd}.",
                         sub.Id, sub.UserProfileId, sub.CurrentPeriodEnd);
                 }
 
                 await unitOfWork.CompleteAsync();
 
                 _logger.LogInformation(
-                    "SubscriptionExpiryJob: Expired {Count} subscription(s).", expiredList.Count);
+                    "SubscriptionExpiryJob completed successfully. Marked {ExpiredCount} subscription(s) as expired. Completion time: {CompletionTime}.",
+                    expiredList.Count, DateTime.UtcNow);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "SubscriptionExpiryJob failed.");
+                _logger.LogError(ex, "SubscriptionExpiryJob failed during execution. Error: {ErrorMessage}. Execution time: {FailureTime}.",
+                    ex.Message, DateTime.UtcNow);
             }
         }
 

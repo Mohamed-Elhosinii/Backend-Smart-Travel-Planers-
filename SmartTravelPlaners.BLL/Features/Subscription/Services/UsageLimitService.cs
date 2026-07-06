@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using SmartTravelPlaners.BLL.Features.Subscription.Interfaces;
 using SmartTravelPlaners.DAL.Configurations;
 using SmartTravelPlaners.DAL.Entities;
@@ -8,46 +9,114 @@ namespace SmartTravelPlaners.BLL.Features.Subscription.Services
     public class UsageLimitService : IUsageLimitService
     {
         private readonly IUnitOfWork _unitOfWork;
+        private readonly ILogger<UsageLimitService> _logger;
 
-        public UsageLimitService(IUnitOfWork unitOfWork)
+        public UsageLimitService(IUnitOfWork unitOfWork, ILogger<UsageLimitService> logger)
         {
             _unitOfWork = unitOfWork;
+            _logger = logger;
         }
 
         public async Task<bool> CanGenerateTripAsync(string userId)
         {
-            var (tripsUsed, tripsLimit, _, _) = await GetCurrentUsageAsync(userId);
+            try
+            {
+                var (tripsUsed, tripsLimit, _, _) = await GetCurrentUsageAsync(userId);
 
-            // null limit = unlimited
-            if (tripsLimit == null) return true;
+                // null limit = unlimited
+                if (tripsLimit == null)
+                {
+                    _logger.LogInformation("Trip generation check for UserId: {UserId} - Unlimited plan", userId);
+                    return true;
+                }
 
-            return tripsUsed < tripsLimit.Value;
+                var canGenerate = tripsUsed < tripsLimit.Value;
+
+                if (canGenerate)
+                {
+                    _logger.LogInformation("Trip generation allowed for UserId: {UserId}. Used: {TripsUsed}/{TripsLimit}", userId, tripsUsed, tripsLimit);
+                }
+                else
+                {
+                    _logger.LogWarning("Trip generation limit reached for UserId: {UserId}. Used: {TripsUsed}/{TripsLimit}", userId, tripsUsed, tripsLimit);
+                }
+
+                return canGenerate;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error checking trip generation eligibility for UserId: {UserId}. Error: {ErrorMessage}", userId, ex.Message);
+                throw;
+            }
         }
 
         public async Task<bool> CanSendMessageAsync(string userId)
         {
-            var (_, _, messagesUsed, messagesLimit) = await GetCurrentUsageAsync(userId);
+            try
+            {
+                var (_, _, messagesUsed, messagesLimit) = await GetCurrentUsageAsync(userId);
 
-            // null limit = unlimited
-            if (messagesLimit == null) return true;
+                // null limit = unlimited
+                if (messagesLimit == null)
+                {
+                    _logger.LogInformation("Message send check for UserId: {UserId} - Unlimited plan", userId);
+                    return true;
+                }
 
-            return messagesUsed < messagesLimit.Value;
+                var canSend = messagesUsed < messagesLimit.Value;
+
+                if (canSend)
+                {
+                    _logger.LogInformation("Message send allowed for UserId: {UserId}. Used: {MessagesUsed}/{MessagesLimit}", userId, messagesUsed, messagesLimit);
+                }
+                else
+                {
+                    _logger.LogWarning("Message send limit reached for UserId: {UserId}. Used: {MessagesUsed}/{MessagesLimit}", userId, messagesUsed, messagesLimit);
+                }
+
+                return canSend;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error checking message send eligibility for UserId: {UserId}. Error: {ErrorMessage}", userId, ex.Message);
+                throw;
+            }
         }
 
         public async Task IncrementTripUsageAsync(string userId)
         {
-            var counter = await GetOrCreateCounterAsync(userId);
-            counter.TripsUsed++;
-            _unitOfWork.Repository<UsageCounter>().Update(counter);
-            await _unitOfWork.CompleteAsync();
+            try
+            {
+                var counter = await GetOrCreateCounterAsync(userId);
+                counter.TripsUsed++;
+                _unitOfWork.Repository<UsageCounter>().Update(counter);
+                await _unitOfWork.CompleteAsync();
+
+                _logger.LogInformation("Trip usage incremented for UserId: {UserId}. New count: {TripsUsed}", userId, counter.TripsUsed);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to increment trip usage for UserId: {UserId}. Error: {ErrorMessage}", userId, ex.Message);
+                throw;
+            }
         }
 
         public async Task IncrementMessageUsageAsync(string userId)
         {
-            var counter = await GetOrCreateCounterAsync(userId);
-            counter.MessagesUsed++;
-            _unitOfWork.Repository<UsageCounter>().Update(counter);
-            await _unitOfWork.CompleteAsync();
+            try
+            {
+                var counter = await GetOrCreateCounterAsync(userId);
+                counter.MessagesUsed++;
+                _unitOfWork.Repository<UsageCounter>().Update(counter);
+                await _unitOfWork.CompleteAsync();
+
+                _logger.LogInformation("Message usage incremented for UserId: {UserId}. New count: {MessagesUsed}", userId, counter.MessagesUsed);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to increment message usage for UserId: {UserId}. Error: {ErrorMessage}", userId, ex.Message);
+                throw;
+            }
         }
 
         public async Task<(int TripsUsed, int? TripsLimit, int MessagesUsed, int? MessagesLimit)>

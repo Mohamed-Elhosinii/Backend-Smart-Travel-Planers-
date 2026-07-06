@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SmartTravelPlaners.BLL.Features.Place.DTOs;
 using SmartTravelPlaners.BLL.Features.Place.Settings;
@@ -16,94 +17,130 @@ namespace SmartTravelPlaners.BLL.Features.Place.Services
         private readonly HttpClient _serperHttp;
         private readonly FoursquareSettings _foursquareSettings;
         private readonly SerperSettings _serperSettings;
+        private readonly ILogger<PlacesApiService> _logger;
 
         public PlacesApiService(
             IHttpClientFactory factory,
             IOptions<FoursquareSettings> foursquareSettings,
-            IOptions<SerperSettings> serperSettings)
+            IOptions<SerperSettings> serperSettings,
+            ILogger<PlacesApiService> logger)
         {
             _foursquareSettings = foursquareSettings.Value;
             _serperSettings = serperSettings.Value;
             _foursquareHttp = factory.CreateClient("Foursquare");
             _serperHttp = factory.CreateClient("Serper");
+            _logger = logger;
         }
 
         // ================= SEARCH =================
         public async Task<List<PlaceDto>> SearchAsync(
-            
+
             string city,
             string? query = null,
             int limit = 20)
         {
-            var url = $"/places/search?near={Uri.EscapeDataString(city)}&limit={limit}";
-
-            if (!string.IsNullOrEmpty(query))
-                url += $"&query={Uri.EscapeDataString(query)}";
-
-            var request = new HttpRequestMessage(HttpMethod.Get, url);
-
-            request.Headers.Authorization =
-                new AuthenticationHeaderValue("Bearer", _foursquareSettings.ServiceKey);
-
-            request.Headers.Add("X-Places-Api-Version", _foursquareSettings.PlacesVersion);
-
-            var response = await _foursquareHttp.SendAsync(request);
-            response.EnsureSuccessStatusCode();
-
-            // Safely read content as string and handle empty responses.
-            var contentString = response.Content == null ? null : await response.Content.ReadAsStringAsync();
-            if (string.IsNullOrWhiteSpace(contentString))
-                return new();
-
-            var result = JsonSerializer.Deserialize<FoursquareSearchResponse>(contentString, new JsonSerializerOptions
+            try
             {
-                PropertyNameCaseInsensitive = true
-            });
+                _logger.LogInformation("Searching places. City: {City}, Query: {Query}, Limit: {Limit}", city, query ?? "none", limit);
 
-            if (result == null)
-                return new();
+                var url = $"/places/search?near={Uri.EscapeDataString(city)}&limit={limit}";
 
-            return result.results
-               .Select(p => p.ToDto())
-               .ToList();
+                if (!string.IsNullOrEmpty(query))
+                    url += $"&query={Uri.EscapeDataString(query)}";
 
-          
+                var request = new HttpRequestMessage(HttpMethod.Get, url);
+
+                request.Headers.Authorization =
+                    new AuthenticationHeaderValue("Bearer", _foursquareSettings.ServiceKey);
+
+                request.Headers.Add("X-Places-Api-Version", _foursquareSettings.PlacesVersion);
+
+                var response = await _foursquareHttp.SendAsync(request);
+                response.EnsureSuccessStatusCode();
+
+                // Safely read content as string and handle empty responses.
+                var contentString = response.Content == null ? null : await response.Content.ReadAsStringAsync();
+                if (string.IsNullOrWhiteSpace(contentString))
+                {
+                    _logger.LogWarning("Empty response from Foursquare API for city: {City}", city);
+                    return new();
+                }
+
+                var result = JsonSerializer.Deserialize<FoursquareSearchResponse>(contentString, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+                if (result == null)
+                {
+                    _logger.LogWarning("Failed to deserialize Foursquare response for city: {City}", city);
+                    return new();
+                }
+
+                var places = result.results
+                   .Select(p => p.ToDto())
+                   .ToList();
+
+                _logger.LogInformation("Places search completed. City: {City}, ResultCount: {ResultCount}", city, places.Count);
+                return places;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to search places for city: {City}. Error: {ErrorMessage}", city, ex.Message);
+                throw;
+            }
         }
 
         // ================= IMAGES =================
         public async Task<List<PlacePhotoDto>> GetImages(string placeName, string category, string? address)
         {
-            var query = $"{placeName} {category}";
-
-            var request = new HttpRequestMessage(HttpMethod.Post, "/images");
-
-            request.Headers.Add("X-API-KEY", _serperSettings.ApiKey);
-
-            request.Content = JsonContent.Create(new
+            try
             {
-                q = query,
-                num = 10
-            });
+                _logger.LogInformation("Fetching images for place. Name: {PlaceName}, Category: {Category}", placeName, category);
 
-            var response = await _serperHttp.SendAsync(request);
+                var query = $"{placeName} {category}";
 
-            if (!response.IsSuccessStatusCode)
-                return new List<PlacePhotoDto>();
+                var request = new HttpRequestMessage(HttpMethod.Post, "/images");
 
-            var result = await response.Content.ReadFromJsonAsync<SerperResponse>(
-                new JsonSerializerOptions
+                request.Headers.Add("X-API-KEY", _serperSettings.ApiKey);
+
+                request.Content = JsonContent.Create(new
                 {
-                    PropertyNameCaseInsensitive = true
+                    q = query,
+                    num = 10
                 });
 
-            return result?.Images?
-                .Where(x => !string.IsNullOrEmpty(x.ImageUrl) && IsValidImageUrl(x.ImageUrl))
-                .Take(3)
-                .Select(x => new PlacePhotoDto
+                var response = await _serperHttp.SendAsync(request);
+
+                if (!response.IsSuccessStatusCode)
                 {
-                    Urls = new List<string> { x.ImageUrl }
-                })
-                .ToList() ?? new List<PlacePhotoDto>();
+                    _logger.LogWarning("Serper API failed to fetch images for place: {PlaceName}", placeName);
+                    return new List<PlacePhotoDto>();
+                }
+
+                var result = await response.Content.ReadFromJsonAsync<SerperResponse>(
+                    new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    });
+
+                var photos = result?.Images?
+                    .Where(x => !string.IsNullOrEmpty(x.ImageUrl) && IsValidImageUrl(x.ImageUrl))
+                    .Take(3)
+                    .Select(x => new PlacePhotoDto
+                    {
+                        Urls = new List<string> { x.ImageUrl }
+                    })
+                    .ToList() ?? new List<PlacePhotoDto>();
+
+                _logger.LogInformation("Images fetched successfully for place: {PlaceName}, Count: {PhotoCount}", placeName, photos.Count);
+                return photos;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to fetch images for place: {PlaceName}. Error: {ErrorMessage}", placeName, ex.Message);
+                throw;
+            }
         }
 
         // ================= VALIDATION =================
@@ -129,51 +166,82 @@ namespace SmartTravelPlaners.BLL.Features.Place.Services
         // ================= DETAILS =================
         public async Task<PlaceDetailsDto?> GetPlaceDetailsAsync(string fsqPlaceId)
         {
-            var request = new HttpRequestMessage(
-                HttpMethod.Get,
-                $"/places/{fsqPlaceId}");
+            try
+            {
+                _logger.LogInformation("Retrieving place details. PlaceId: {PlaceId}", fsqPlaceId);
 
-            request.Headers.Authorization =
-                new AuthenticationHeaderValue("Bearer", _foursquareSettings.ServiceKey);
+                var request = new HttpRequestMessage(
+                    HttpMethod.Get,
+                    $"/places/{fsqPlaceId}");
 
-            request.Headers.Add("X-Places-Api-Version", _foursquareSettings.PlacesVersion);
+                request.Headers.Authorization =
+                    new AuthenticationHeaderValue("Bearer", _foursquareSettings.ServiceKey);
 
-            var response = await _foursquareHttp.SendAsync(request);
-            response.EnsureSuccessStatusCode();
+                request.Headers.Add("X-Places-Api-Version", _foursquareSettings.PlacesVersion);
 
-            var result = await response.Content.ReadFromJsonAsync<FoursquarePlaceDetailsResponse>();
+                var response = await _foursquareHttp.SendAsync(request);
+                response.EnsureSuccessStatusCode();
 
-            if (result == null)
-                return null;
+                var result = await response.Content.ReadFromJsonAsync<FoursquarePlaceDetailsResponse>();
 
-            return result.ToDetailsDto();
+                if (result == null)
+                {
+                    _logger.LogWarning("Place details not found or failed to deserialize. PlaceId: {PlaceId}", fsqPlaceId);
+                    return null;
+                }
+
+                _logger.LogInformation("Place details retrieved successfully. PlaceId: {PlaceId}", fsqPlaceId);
+                return result.ToDetailsDto();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to retrieve place details. PlaceId: {PlaceId}. Error: {ErrorMessage}", fsqPlaceId, ex.Message);
+                throw;
+            }
         }
 
         // ================= NEARBY =================
         public async Task<List<NearbyPlaceDto>> GetNearbyPlacesAsync(double latitude, double longitude)
         {
-            var request = new HttpRequestMessage(
-                HttpMethod.Get,
-                $"/geotagging/candidates?ll={latitude},{longitude}");
+            try
+            {
+                _logger.LogInformation("Fetching nearby places. Latitude: {Latitude}, Longitude: {Longitude}", latitude, longitude);
 
-            request.Headers.Authorization =
-                new AuthenticationHeaderValue("Bearer", _foursquareSettings.ServiceKey);
+                var request = new HttpRequestMessage(
+                    HttpMethod.Get,
+                    $"/geotagging/candidates?ll={latitude},{longitude}");
 
-            request.Headers.Add("X-Places-Api-Version", _foursquareSettings.PlacesVersion);
+                request.Headers.Authorization =
+                    new AuthenticationHeaderValue("Bearer", _foursquareSettings.ServiceKey);
 
-            var response = await _foursquareHttp.SendAsync(request);
-            response.EnsureSuccessStatusCode();
+                request.Headers.Add("X-Places-Api-Version", _foursquareSettings.PlacesVersion);
 
-            var result = await response.Content.ReadFromJsonAsync<GeotaggingResponse>();
+                var response = await _foursquareHttp.SendAsync(request);
+                response.EnsureSuccessStatusCode();
 
-            if (result == null)
-                return new();
+                var result = await response.Content.ReadFromJsonAsync<GeotaggingResponse>();
 
-            return result.Candidates
-               .Select(x => x.ToNearbyDto())
-                .ToList();
+                if (result == null)
+                {
+                    _logger.LogWarning("No nearby places found or failed to deserialize response. Lat: {Latitude}, Long: {Longitude}", latitude, longitude);
+                    return new();
+                }
 
-         
+                var places = result.Candidates
+                   .Select(x => x.ToNearbyDto())
+                    .ToList();
+
+                _logger.LogInformation("Nearby places retrieved successfully. Count: {PlaceCount}, Latitude: {Latitude}, Longitude: {Longitude}", 
+                    places.Count, latitude, longitude);
+
+                return places;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to fetch nearby places. Latitude: {Latitude}, Longitude: {Longitude}. Error: {ErrorMessage}", 
+                    latitude, longitude, ex.Message);
+                throw;
+            }
         }
     }
 }

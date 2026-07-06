@@ -1,4 +1,4 @@
-﻿using SmartTravelPlaners.BLL.Features.Orchestrator.DTOs;
+using SmartTravelPlaners.BLL.Features.Orchestrator.DTOs;
 using SmartTravelPlaners.DAL.Entities;
 using System;
 using System.Collections.Generic;
@@ -15,7 +15,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Interfaces
         Task<TripPlanDto> BuildTripPlanAsync(Guid tripId);
         Task<TripHotelDto?> RegenerateHotelAsync(Guid tripId);
         Task<List<ActivityPlanDto>> RegenerateDayActivitiesAsync(Guid tripId, int dayNumber);
-        Task SyncDayPlansAsync(Guid tripId);
+        Task SyncDayPlansAsync(Guid tripId, string? changedField = null);
         Task<TripFlightDto?> RegenerateFlightAsync(Guid tripId);
         Task RegenerateWeatherAsync(Guid tripId);
         Task<TripPlanDto> GetCurrentPlanAsync(Guid tripId);

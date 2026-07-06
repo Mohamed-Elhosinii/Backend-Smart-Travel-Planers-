@@ -16,5 +16,7 @@ namespace SmartTravelPlaners.DAL.Entities
         public string? PhotosJson { get; set; }                
         public string? OpeningHoursJson { get; set; }         
         public DateTime CachedAt { get; set; } = DateTime.UtcNow;
+        public string? NormalizedQuery { get; set; }
+        public DateTime? LastUsedAt { get; set; }
     }
 }

@@ -1,19 +1,24 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
+using Microsoft.SemanticKernel.Connectors.OpenAI;
 using SmartTravelPlaners.BLL.Features.Chat.DTOs;
 using SmartTravelPlaners.BLL.Features.Chat.Interfaces;
 using SmartTravelPlaners.BLL.Features.Orchestrator.DTOs;
 using SmartTravelPlaners.BLL.Features.Orchestrator.Interfaces;
 using SmartTravelPlaners.BLL.Features.Subscription.Interfaces;
 using SmartTravelPlaners.BLL.Features.Trips.Interfaces;
+using SmartTravelPlaners.BLL.Features.Trips.Plugins;
+using SmartTravelPlaners.BLL.Features.Flight.Plugins;
+using SmartTravelPlaners.BLL.Features.Hotel.Plugins;
+using SmartTravelPlaners.BLL.Features.Place.Plugins;
+using SmartTravelPlaners.BLL.Features.Weather.Plugins;
 using SmartTravelPlaners.DAL.Entities;
 using SmartTravelPlaners.DAL.Enums;
 using SmartTravelPlaners.DAL.Repositories.Abstract;
-using SmartTravelPlaners.DAL.Repositories.Concrete;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 
 namespace SmartTravelPlaners.BLL.Features.Chat.Services
 {
@@ -22,111 +27,127 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
         private readonly IChatRepository _chatRepo;
         private readonly ITripRepository _tripRepo;
         private readonly IUserProfileRepository _userProfileRepo;
-        private readonly IUnitOfWork _unitOfWork;
         private readonly IChatCompletionService _ai;
+        private readonly Kernel _kernel;
+        private readonly TripPlugin _tripPlugin;
+        private readonly FlightPlugin _flightPlugin;
+        private readonly HotelPlugin _hotelPlugin;
+        private readonly PlacesPlugin _placesPlugin;
+        private readonly WeatherPlugin _weatherPlugin;
         private readonly ITripOrchestratorService _orchestrator;
         private readonly IUsageLimitService _usageLimitService;
-        private readonly IServiceProvider _serviceProvider;
-        private readonly IConfiguration _configuration;
-        private readonly ITripCreationService _tripCreationService;
+        private readonly ILogger<ChatService> _logger;
 
         public ChatService(
             IChatRepository chatRepo,
             ITripRepository tripRepo,
             IUserProfileRepository userProfileRepo,
-            IUnitOfWork unitOfWork,
             ITripOrchestratorService orchestrator,
             IUsageLimitService usageLimitService,
-            IServiceProvider serviceProvider,
-            IConfiguration configuration,
-            ITripCreationService tripCreationService,
-            Kernel kernel)
+            Kernel kernel,
+            TripPlugin tripPlugin,
+            FlightPlugin flightPlugin,
+            HotelPlugin hotelPlugin,
+            PlacesPlugin placesPlugin,
+            WeatherPlugin weatherPlugin,
+            ILogger<ChatService> logger)
         {
             _chatRepo = chatRepo;
             _tripRepo = tripRepo;
             _userProfileRepo = userProfileRepo;
-            _unitOfWork = unitOfWork;
+            _kernel = kernel;
             _ai = kernel.GetRequiredService<IChatCompletionService>();
+            _tripPlugin = tripPlugin;
+            _flightPlugin = flightPlugin;
+            _hotelPlugin = hotelPlugin;
+            _placesPlugin = placesPlugin;
+            _weatherPlugin = weatherPlugin;
             _orchestrator = orchestrator;
             _usageLimitService = usageLimitService;
-            _serviceProvider = serviceProvider;
-            _configuration = configuration;
-            _tripCreationService = tripCreationService;
+            _logger = logger;
         }
 
         public async Task<ChatReplyDto> SendMessageAsync(Guid sessionId, string userId, string userMessage)
         {
-            var session = await _chatRepo.GetSessionAsync(sessionId);
-            if (session == null)
-                throw new Exception("Session not found");
-
-            if (session.UserId != userId)
-                throw new UnauthorizedAccessException("You do not have access to this session.");
-
-            // ===========================
-            // USAGE LIMIT: Check message limit before calling the AI
-            // ===========================
-            var canSend = await _usageLimitService.CanSendMessageAsync(session.UserId);
-            if (!canSend)
+            try
             {
-                return new ChatReplyDto
+                _logger.LogInformation("Processing chat message for SessionId: {SessionId}, UserId: {UserId}", sessionId, userId);
+
+                var session = await _chatRepo.GetSessionAsync(sessionId);
+                if (session == null)
                 {
-                    Message = "You've reached your monthly message limit. Upgrade your plan to continue chatting! 🚀"
-                };
-            }
+                    _logger.LogWarning("Chat session not found. SessionId: {SessionId}", sessionId);
+                    throw new Exception("Session not found");
+                }
 
-            var history = new ChatHistory();
+                if (session.UserId != userId)
+                {
+                    _logger.LogWarning("Unauthorized access attempt. SessionId: {SessionId}, UserId: {UserId}", sessionId, userId);
+                    throw new UnauthorizedAccessException("You do not have access to this session.");
+                }
 
-            history.AddSystemMessage(@"You are a smart travel assistant called TravelBot.
+                // ===========================
+                // USAGE LIMIT: Check message limit before calling the AI
+                // ===========================
+                var canSend = await _usageLimitService.CanSendMessageAsync(session.UserId);
+                if (!canSend)
+                {
+                    _logger.LogWarning("Message limit reached for UserId: {UserId}", session.UserId);
+                    return new ChatReplyDto
+                    {
+                        Message = "You've reached your monthly message limit. Upgrade your plan to continue chatting! 🚀"
+                    };
+                }
+
+                // ===========================
+                // CONFIGURE TRIP PLUGIN STATE
+                // ===========================
+                _tripPlugin.UserId = session.UserId;
+                _tripPlugin.TripId = session.TripId;
+                _tripPlugin.IsPlanUpdating = false;
+                _tripPlugin.ShowPlanRequested = false;
+
+                if (!_kernel.Plugins.Contains("Trip"))
+                {
+                    _kernel.Plugins.AddFromObject(_tripPlugin, "Trip");
+                }
+                if (!_kernel.Plugins.Contains("Flight"))
+                {
+                    _kernel.Plugins.AddFromObject(_flightPlugin, "Flight");
+                }
+                if (!_kernel.Plugins.Contains("Hotel"))
+                {
+                    _kernel.Plugins.AddFromObject(_hotelPlugin, "Hotel");
+                }
+                if (!_kernel.Plugins.Contains("Places"))
+                {
+                    _kernel.Plugins.AddFromObject(_placesPlugin, "Places");
+                }
+                if (!_kernel.Plugins.Contains("Weather"))
+                {
+                    _kernel.Plugins.AddFromObject(_weatherPlugin, "Weather");
+                }
+
+                var history = new ChatHistory();
+
+                // ===========================
+                // SYSTEM PROMPTS
+                // ===========================
+                history.AddSystemMessage(@"You are a smart travel assistant called TravelBot.
 Talk to the user in the SAME LANGUAGE they use to talk to you, in a friendly and natural way.
-You must be highly intelligent and flexible in understanding the user's input. They do not have to provide information in a strict format.
 Your job is to collect travel information to plan a new trip, or help them modify an existing trip plan.
+You have access to a variety of tools (create_trip, update_trip_field, update_hotel, update_flight, update_activities, show_trip) as well as search tools for flights, hotels, places, and weather.
+Use these tools to take any trip actions on behalf of the user. 
+IMPORTANT: After calling a tool, ALWAYS reply to the user in natural conversational language in their own language, summarizing what happened. NEVER expose raw JSON or tool output directly to the user.");
 
-If the user is planning a new journey and they mention their destination and origin at any point, even if you are still collecting other info, you MUST output:
-TRIP_TITLE:{ ""title"": ""[Title based on user language, e.g. رحلة من القاهرة إلى باريس]"" }
+                // Inject current date
+                history.AddSystemMessage($"Today's date is {DateTime.UtcNow:yyyy-MM-dd}. Use this to validate any dates the user or trip mentions — reject any date before today.");
 
-When ALL required fields for a NEW trip are collected, respond ONLY with:
-TRIP_READY:{
-  ""destination"": """",
-  ""originCity"": """",
-  ""startDate"": ""yyyy-MM-dd"",
-  ""endDate"": ""yyyy-MM-dd"",
-  ""numTravelers"": 1,
-  ""budgetTotal"": 1000,
-  ""preferences"": []
-}
-
-If the user asks to see the current trip (e.g. ""ابعت الرحلة"", ""اعرض الرحلة"", ""show my trip""), respond ONLY with:
-TRIP_SHOW:{}
-
-If the user wants to change a simple field of an EXISTING trip (destination, dates, travelers, budget, originCity), respond ONLY with:
-TRIP_UPDATE_FIELD:{""field"": ""destination"", ""value"": ""Paris""}
-
-If the user wants a DIFFERENT HOTEL for their existing trip, respond ONLY with:
-TRIP_UPDATE_HOTEL:{}
-
-If the user wants a DIFFERENT FLIGHT for their existing trip, respond ONLY with:
-TRIP_UPDATE_FLIGHT:{}
-
-If the user wants DIFFERENT ACTIVITIES for a specific day of their existing trip, respond ONLY with:
-TRIP_UPDATE_ACTIVITIES:{""dayNumber"": 2}
-
-Rules:
-- Always output ONLY one of the formats above when ready, nothing else.
-- Do NOT output any other text alongside these formats.
-- Destination MUST be in English city name only (e.g., Paris, Dubai, Cairo).
-- Dates MUST be in yyyy-MM-dd format.
-- If information is missing, continue asking naturally. Do NOT force the user to answer in a strict way.
-- You can understand conversational context intelligently.");
-
-            // Let the model know whether a trip already exists so it picks TRIP_UPDATE vs TRIP_READY.
-
-            if (session.TripId != null)
-            {
-                var trip = await _tripRepo.GetByIdAsync(session.TripId.Value);
-                history.AddSystemMessage($@"
-The user already has an active trip. If they want to change something, use TRIP_UPDATE_FIELD (not TRIP_READY).
-
+                if (session.TripId != null)
+                {
+                    var trip = await _tripRepo.GetByIdAsync(session.TripId.Value);
+                    history.AddSystemMessage($@"
+The user already has an active trip.
 Current trip details:
 Destination: {trip.Destination}
 Origin: {trip.OriginCity}
@@ -137,553 +158,318 @@ Budget: {trip.BudgetTotal}
 
 IMPORTANT RULES:
 - The user is referring to THIS trip ONLY.
-- Never ask for the destination or any trip details again.
-- Never ask for confirmation before making changes.
--  When the user says they want to change something but does NOT provide the new value, ask for it first in Arabic.
-- Only respond with the format AFTER you have the new value.
+- Never ask for the destination or any trip details again unless they want to change them.
+- Never ask for confirmation before making changes; just use the update_trip_field tool directly.
+- When the user says they want to change something but does NOT provide the new value, ask for it first in Arabic.
+- Only call the tool AFTER you have the new value.
 - For example: If the user says 'عدل الدولة' or 'غير الدولة' without specifying, ask: 'هل تقصد دولة الوجهة أم مدينة الانطلاق؟'
-- If they say 'الوجهة' or 'الذهاب', use TRIP_UPDATE_FIELD with field 'destination'.
-- If they say 'الانطلاق' or 'المغادرة', use TRIP_UPDATE_FIELD with field 'originCity'.
-- Do NOT say 'هل أنت متأكد' or 'هل تريد تغيير' — just do it directly.
-- If user says 'غير الأنشطة' or 'اقترح أماكن', respond ONLY with TRIP_UPDATE_ACTIVITIES and the day number.
+- If they say 'الوجهة' or 'الذهاب', update the 'destination' field.
+- If they say 'الانطلاق' or 'المغادرة', update the 'origincity' field.
+- 'origincity' MUST be a specific CITY name, NEVER a country. If user says 'Egypt' or 'مصر', ask them 'من أي مدينة في مصر؟'.
 - If the user wants to change dates WITHOUT specifying which date (start or end), ask them first: 'هل تريد تغيير تاريخ البداية أم تاريخ العودة؟'
-- If the user specifies the date type AND the new value, respond IMMEDIATELY with TRIP_UPDATE_FIELD.
 - If user says 'تمام' or 'موافق' after a change, just confirm the change was made.
 ");
-            }
+                }
 
-            foreach (var msg in session.Messages.OrderBy(m => m.CreatedAt))
-            {
-                if (msg.Role == MessageRole.User)
-                    history.AddUserMessage(msg.Content);
-                else
-                    history.AddAssistantMessage(msg.Content);
-            }
+                foreach (var msg in session.Messages.OrderBy(m => m.CreatedAt))
+                {
+                    if (msg.Role == MessageRole.User)
+                        history.AddUserMessage(msg.Content);
+                    else
+                        history.AddAssistantMessage(msg.Content);
+                }
 
-            history.AddUserMessage(userMessage);
+                history.AddUserMessage(userMessage);
 
-            await _chatRepo.AddMessageAsync(new ChatMessage
-            {
-                Id = Guid.NewGuid(),
-                SessionId = sessionId,
-                Role = MessageRole.User,
-                Content = userMessage,
-                CreatedAt = DateTime.UtcNow
-            });
+                await _chatRepo.AddMessageAsync(new ChatMessage
+                {
+                    Id = Guid.NewGuid(),
+                    SessionId = sessionId,
+                    Role = MessageRole.User,
+                    Content = userMessage,
+                    CreatedAt = DateTime.UtcNow
+                });
 
-            var apiKey = _configuration["GitHubModels:Token"];
-            var endpoint = _configuration["GitHubModels:Endpoint"];
-            var modelId = _configuration["GitHubModels:ModelId"];
+                _logger.LogInformation("User message stored. Initiating LLM call for SessionId: {SessionId}", sessionId);
 
-            if (string.IsNullOrWhiteSpace(apiKey))
-            {
-                throw new ArgumentNullException("GitHubModels:Token", "API Key is missing or empty in appsettings.json.");
-            }
+                _kernel.FunctionInvoking += (sender, args) =>
+                {
+                    _logger.LogInformation("Invoking semantic kernel function: {FunctionName}", args.Function.Name);
+                };
+                _kernel.FunctionInvoked += (sender, args) =>
+                {
+                    _logger.LogInformation("Semantic kernel function completed: {FunctionName}", args.Function.Name);
+                };
 
-            Console.WriteLine("DEBUG BACKEND: Received message from user, initiating LLM call...");
-            Console.WriteLine($"DEBUG BACKEND: Hitting provider Endpoint: {endpoint} | ModelId: {modelId}");
+                Microsoft.SemanticKernel.ChatMessageContent result = null;
 
-            Microsoft.SemanticKernel.ChatMessageContent result = null;
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            try
-            {
-                result = await _ai.GetChatMessageContentAsync(history, null, null, cts.Token);
-                Console.WriteLine("DEBUG BACKEND: LLM call completed successfully.");
-            }
-            catch (OperationCanceledException)
-            {
-                Console.WriteLine("DEBUG BACKEND ERROR: LLM call timed out after 15 seconds.");
-                return new ChatReplyDto { Message = "Sorry, the AI service took too long to respond. Please try again later." };
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(45)); 
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                try
+                {
+                    var settings = new OpenAIPromptExecutionSettings 
+                    { 
+                        // By default, Auto() sets maximumAutoInvokeAttempts = 5.
+                        // Meaning the LLM can recursively call up to 5 functions sequentially before returning to the user.
+                        FunctionChoiceBehavior = FunctionChoiceBehavior.Auto() 
+                    };
+
+                    _logger.LogInformation("Starting LLM generation for SessionId: {SessionId}", sessionId);
+                    result = await _ai.GetChatMessageContentAsync(history, settings, _kernel, cts.Token);
+                    sw.Stop();
+                    _logger.LogInformation("LLM call completed successfully in {ElapsedMilliseconds}ms for SessionId: {SessionId}", sw.ElapsedMilliseconds, sessionId);
+                }
+                catch (OperationCanceledException)
+                {
+                    _logger.LogError("LLM call timeout for SessionId: {SessionId}", sessionId);
+                    return new ChatReplyDto { Message = "Sorry, the AI service took too long to respond. Please try again later." };
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "LLM call failed for SessionId: {SessionId}. Error: {ErrorMessage}", sessionId, ex.Message);
+                    return new ChatReplyDto { Message = "Sorry, the AI service is currently unavailable. Please try again later." };
+                }
+
+                var finalReply = result?.Content ?? "Sorry, unable to respond right now";
+
+                // ===========================
+                // SYNC NEW TRIP STATE
+                // ===========================
+                if (_tripPlugin.TripId.HasValue && session.TripId == null)
+                {
+                    session.TripId = _tripPlugin.TripId;
+                    session.Stage = ChatStage.PlanReady;
+
+                    var newTrip = await _tripRepo.GetByIdAsync(session.TripId.Value);
+                    if (newTrip != null)
+                    {
+                        session.Title = string.IsNullOrWhiteSpace(newTrip.OriginCity) 
+                            ? $"رحلة إلى {newTrip.Destination}" 
+                            : $"رحلة من {newTrip.OriginCity} إلى {newTrip.Destination}";
+
+                        _logger.LogInformation("Trip created and linked to session. TripId: {TripId}, SessionId: {SessionId}", newTrip.Id, sessionId);
+                    }
+                }
+
+                // ===========================
+                // POPULATE PLAN FOR FRONTEND
+                // ===========================
+                TripPlanDto? plan = null;
+                if (_tripPlugin.IsPlanUpdating)
+                {
+                    session.Stage = ChatStage.Modifying;
+                    _logger.LogInformation("Trip is being updated. SessionId: {SessionId}", sessionId);
+                }
+                else if (_tripPlugin.ShowPlanRequested && session.TripId != null)
+                {
+                    try
+                    {
+                        plan = await _orchestrator.GetCurrentPlanAsync(session.TripId.Value);
+                        _logger.LogInformation("Trip plan retrieved. TripId: {TripId}", session.TripId);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to retrieve trip plan. TripId: {TripId}. Error: {ErrorMessage}", session.TripId, ex.Message);
+                    }
+                }
+
+                await _chatRepo.AddMessageAsync(new ChatMessage
+                {
+                    Id = Guid.NewGuid(),
+                    SessionId = sessionId,
+                    Role = MessageRole.Assistant,
+                    Content = finalReply,
+                    CreatedAt = DateTime.UtcNow
+                });
+
+                await _usageLimitService.IncrementMessageUsageAsync(session.UserId);
+
+                session.UpdatedAt = DateTime.UtcNow;
+                await _chatRepo.SaveChangesAsync();
+
+                _logger.LogInformation("Chat message processed successfully. SessionId: {SessionId}", sessionId);
+
+                return new ChatReplyDto
+                {
+                    Message = finalReply,
+                    Plan = plan,
+                    TripId = session.TripId
+                };
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"DEBUG BACKEND ERROR: LLM call failed or timed out: {ex.Message}");
-                return new ChatReplyDto { Message = "Sorry, the AI service is currently unavailable. Please try again later." };
+                _logger.LogError(ex, "Error processing chat message for SessionId: {SessionId}, UserId: {UserId}. Error: {ErrorMessage}", 
+                    sessionId, userId, ex.Message);
+                throw;
             }
-
-            var rawReply = result?.Content ?? "Sorry, unable to respond right now";
-
-            string finalReply;
-            TripPlanDto? plan = null;
-
-            // =========================
-            // HELPER: extract JSON after keyword (handles text before keyword)
-            // =========================
-            static string? ExtractAfter(string input, string keyword)
-            {
-                var idx = input.IndexOf(keyword, StringComparison.Ordinal);
-                if (idx < 0) return null;
-                return input.Substring(idx + keyword.Length).Trim();
-            }
-
-            bool HasKeyword(string keyword) =>
-                rawReply.Contains(keyword, StringComparison.Ordinal);
-
-            // Intercept TRIP_TITLE if present
-            if (HasKeyword("TRIP_TITLE:"))
-            {
-                var titleJson = ExtractAfter(rawReply, "TRIP_TITLE:");
-                if (titleJson != null)
-                {
-                    try
-                    {
-                        // Clean up to just the json block if there's text after
-                        var match = Regex.Match(titleJson, @"\{.*?\}", RegexOptions.Singleline);
-                        if (match.Success)
-                        {
-                            var titleObj = JsonSerializer.Deserialize<Dictionary<string, string>>(match.Value);
-                            if (titleObj != null && titleObj.TryGetValue("title", out var titleValue))
-                            {
-                                session.Title = titleValue;
-                                _unitOfWork.CompleteAsync().Wait(); // Save title immediately, we'll await later or just let the final save pick it up. Actually, better to just set it and let it save at the end.
-                            }
-                            // Strip out the TRIP_TITLE command from rawReply so the user doesn't see it if there's conversational text.
-                            rawReply = rawReply.Replace("TRIP_TITLE:" + match.Value, "").Trim();
-                        }
-                    }
-                    catch { /* ignore parse errors for title */ }
-                }
-            }
-
-            // =========================
-            // CREATE TRIP FLOW
-            // =========================
-            if (HasKeyword("TRIP_READY:") && session.TripId == null)
-            {
-                var json = ExtractAfter(rawReply, "TRIP_READY:")!;
-
-                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                var dto = JsonSerializer.Deserialize<TripCreateDto>(json, options)
-                              ?? throw new Exception("Failed to parse trip data from AI");
-                if (DateOnly.TryParse(dto.StartDate, out var startDate) && startDate < DateOnly.FromDateTime(DateTime.Today))
-                {
-                    finalReply = "عذراً، لا يمكن إنشاء رحلة بتاريخ في الماضي. من فضلك اختر تاريخ مستقبلي.";
-                    plan = null;
-                }
-
-                // Shared create → background-build → usage pipeline
-                // (the SAME path as POST /api/Trip/quick-plan; one limit check, one
-                //  persistence path, one BuildTripPlanAsync, one usage increment).
-                else
-                {
-                    var creationResult = await _tripCreationService.CreateAndBuildAsync(dto, session.UserId);
-
-                    if (creationResult.LimitReached)
-                    {
-                        return new ChatReplyDto { Message = creationResult.Message! };
-                    }
-
-                    var trip = creationResult.Trip!;
-                    session.TripId = trip.Id;
-                    session.Stage = ChatStage.PlanReady;
-
-                    await _chatRepo.SaveChangesAsync();
-
-                    finalReply = $"ممتاز! جاري تجهيز أفضل خطة لرحلتك إلى {trip.Destination} (من {trip.StartDate} إلى {trip.EndDate}). ثواني وهتكون جاهزة ✈️";
-                    plan = null;
-                }
-            }
-
-            // =========================
-            // VIEW TRIP FLOW
-            // =========================
-            else if (HasKeyword("TRIP_SHOW:"))
-            {
-                if (session.TripId == null)
-                {
-                    return new ChatReplyDto
-                    {
-                        Message = "مفيش رحلة موجودة حالياً.",
-                        Plan = null
-                    };
-                }
-
-                try
-                {
-                    plan = await _orchestrator.GetCurrentPlanAsync(session.TripId.Value);
-                    finalReply = "دي تفاصيل رحلتك ";
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"GetCurrentPlanAsync failed: {ex.Message}");
-                    finalReply = "حصلت مشكلة وأنا بجيب الرحلة.";
-                }
-            }
-            // =========================
-            // UPDATE HOTEL FLOW
-            // =========================
-            else if (HasKeyword("TRIP_UPDATE_HOTEL:"))
-            {
-                if (session.TripId == null)
-                {
-                    return new ChatReplyDto
-                    {
-                        Message = "مفيش رحلة موجودة عشان نغيرلها الفندق. نبدأ نعمل رحلة جديدة؟",
-                        Plan = null
-                    };
-                }
-
-                var tripId = session.TripId.Value;
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        using var scope = _serviceProvider.CreateScope();
-                        var orchestrator = scope.ServiceProvider.GetRequiredService<ITripOrchestratorService>();
-                        await orchestrator.RegenerateHotelAsync(tripId);
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"RegenerateHotelAsync failed: {ex.Message}");
-                    }
-                });
-
-                finalReply = "جاري البحث عن فندق بديل مناسب... ثواني وهنعرضهولك.";
-                plan = null;
-
-                session.Stage = ChatStage.Modifying;
-            }
-            // =========================
-            // UPDATE ACTIVITIES FLOW
-            // =========================
-            else if (HasKeyword("TRIP_UPDATE_ACTIVITIES:"))
-            {
-                if (session.TripId == null)
-                {
-                    return new ChatReplyDto
-                    {
-                        Message = "مفيش رحلة موجودة عشان نغيرلها الأنشطة. نبدأ نعمل رحلة جديدة؟",
-                        Plan = null
-                    };
-                }
-
-                var json = ExtractAfter(rawReply, "TRIP_UPDATE_ACTIVITIES:")!;
-                var actOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-
-                try
-                {
-                    var data = JsonSerializer.Deserialize<Dictionary<string, int>>(json, actOptions);
-                    var dayNumber = data?.GetValueOrDefault("dayNumber", 0) ?? 0;
-
-                    if (dayNumber <= 0)
-                    {
-                        finalReply = "ممكن تحدد رقم اليوم اللي عايز تغير أنشطته؟";
-                    }
-                    else
-                    {
-                        var tripId = session.TripId.Value;
-                        _ = Task.Run(async () =>
-                        {
-                            try
-                            {
-                                using var scope = _serviceProvider.CreateScope();
-                                var orchestrator = scope.ServiceProvider.GetRequiredService<ITripOrchestratorService>();
-                                await orchestrator.RegenerateDayActivitiesAsync(tripId, dayNumber);
-                            }
-                            catch (Exception ex)
-                            {
-                                Console.WriteLine($"RegenerateDayActivitiesAsync failed: {ex.Message}");
-                            }
-                        });
-
-                        finalReply = $"جاري تغيير أنشطة يوم {dayNumber}... ثواني وهنعرضهالك.";
-                        plan = null;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"RegenerateDayActivitiesAsync parsing failed: {ex.Message}");
-                    finalReply = "حصلت مشكلة وإحنا بنغير الأنشطة، ممكن نجرب تاني؟";
-                }
-
-                session.Stage = ChatStage.Modifying;
-            }
-            // =========================
-            // UPDATE FLIGHT FLOW
-            // =========================
-            else if (HasKeyword("TRIP_UPDATE_FLIGHT:"))
-            {
-                if (session.TripId == null)
-                {
-                    return new ChatReplyDto
-                    {
-                        Message = "مفيش رحلة موجودة عشان نغيرلها الطيران. نبدأ نعمل رحلة جديدة؟",
-                        Plan = null
-                    };
-                }
-
-                var tripId = session.TripId.Value;
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        using var scope = _serviceProvider.CreateScope();
-                        var orchestrator = scope.ServiceProvider.GetRequiredService<ITripOrchestratorService>();
-                        await orchestrator.RegenerateFlightAsync(tripId);
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"RegenerateFlightAsync failed: {ex.Message}");
-                    }
-                });
-
-                finalReply = "جاري البحث عن رحلة طيران بديلة... ثواني وهنعرضهالك.";
-                plan = null;
-
-                session.Stage = ChatStage.Modifying;
-            }
-            // =========================
-            // UPDATE SIMPLE FIELD FLOW
-            // =========================
-            else if (HasKeyword("TRIP_UPDATE_FIELD:") || HasKeyword("TRIP_UPDATE:"))
-            {
-                if (session.TripId == null)
-                {
-                    return new ChatReplyDto
-                    {
-                        Message = "مفيش رحلة موجودة عشان تتعدل. نبدأ نعمل رحلة جديدة؟",
-                        Plan = null
-                    };
-                }
-
-                var json = (ExtractAfter(rawReply, "TRIP_UPDATE_FIELD:")
-                         ?? ExtractAfter(rawReply, "TRIP_UPDATE:"))!;
-
-                try
-                {
-                    var tripId = session.TripId.Value;
-                    var changedField = await UpdateTripFieldAsync(json, tripId); // ← مرة واحدة بس
-                    await _chatRepo.SaveChangesAsync();
-
-                    session.Stage = ChatStage.Modifying;
-
-                    _ = Task.Run(async () =>
-                    {
-                        try
-                        {
-                            using var scope = _serviceProvider.CreateScope();
-                            var orchestrator = scope.ServiceProvider.GetRequiredService<ITripOrchestratorService>();
-                            var tripRepo = scope.ServiceProvider.GetRequiredService<ITripRepository>();
-
-                            switch (changedField?.ToLower())
-                            {
-                                case "destination":
-                                    await orchestrator.RegenerateHotelAsync(tripId);
-                                    await Task.Delay(500); // ← استني شوية
-                                    await orchestrator.RegenerateFlightAsync(tripId);
-                                    var tripAfterDest = await tripRepo.GetByIdAsync(tripId);
-                                    var daysAfterDest = tripAfterDest != null
-                                        ? Math.Max(tripAfterDest.EndDate.DayNumber - tripAfterDest.StartDate.DayNumber, 1) : 1;
-                                    for (int day = 1; day <= daysAfterDest; day++)
-                                        await orchestrator.RegenerateDayActivitiesAsync(tripId, day);
-                                    break;
-                                   
-
-                                case "startdate":
-                                case "enddate":
-                                    await orchestrator.RegenerateHotelAsync(tripId);
-                                    await orchestrator.RegenerateFlightAsync(tripId);
-                                    await orchestrator.RegenerateWeatherAsync(tripId);
-                                    await orchestrator.SyncDayPlansAsync(tripId);
-                                    break;
-
-                                case "numtravelers":
-                                    await orchestrator.RegenerateHotelAsync(tripId);
-                                    break;
-
-                                case "budgettotal":
-                                    await orchestrator.RegenerateHotelAsync(tripId);
-                                    var tripAfterBudget = await tripRepo.GetByIdAsync(tripId);
-                                    var daysAfterBudget = tripAfterBudget != null
-                                        ? Math.Max(tripAfterBudget.EndDate.DayNumber - tripAfterBudget.StartDate.DayNumber, 1) : 1;
-                                    for (int day = 1; day <= daysAfterBudget; day++)
-                                        await orchestrator.RegenerateDayActivitiesAsync(tripId, day);
-                                    break;
-
-                                case "origincity":
-                                    await orchestrator.RegenerateFlightAsync(tripId);
-                                    break;
-
-                                default:
-                                    await orchestrator.BuildTripPlanAsync(tripId);
-                                    break;
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            Console.WriteLine($"Field cascade update failed: {ex.Message}");
-
-                        }
-                    });
-
-                    finalReply = "تم استلام التعديلات وجاري تحديث تفاصيل الرحلة... ثواني وتكون جاهزة.";
-                    plan = null;
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Update field failed: {ex.Message}");
-                    finalReply = ex.Message;
-                }
-            }
-            else
-            {
-                finalReply = rawReply;
-            }
-
-            await _chatRepo.AddMessageAsync(new ChatMessage
-            {
-                Id = Guid.NewGuid(),
-                SessionId = sessionId,
-                Role = MessageRole.Assistant,
-                Content = finalReply,
-                CreatedAt = DateTime.UtcNow
-            });
-
-            // Increment message usage after successful AI reply
-            await _usageLimitService.IncrementMessageUsageAsync(session.UserId);
-
-            session.UpdatedAt = DateTime.UtcNow;
-            await _chatRepo.SaveChangesAsync();
-
-            return new ChatReplyDto
-            {
-                Message = finalReply,
-                Plan = plan,
-                TripId = session.TripId
-            };
-        }
-
-        // =========================
-        // UPDATE TRIP
-        // =========================
-        private async Task<string?> UpdateTripFieldAsync(string json, Guid? tripId)
-        {
-            if (tripId == null) return null;
-
-            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-            var update = JsonSerializer.Deserialize<Dictionary<string, string>>(json, options);
-            if (update == null) return null;
-
-            var trip = await _tripRepo.GetByIdAsync(tripId.Value);
-            if (trip == null) return null;
-
-            var field = update.GetValueOrDefault("field", "");
-            var value = update.GetValueOrDefault("value", "");
-
-            switch (field.ToLower())
-            {
-                case "destination":
-                    trip.Destination = value;
-                    trip.Title = $"Trip to {value}";
-                    break;
-                case "startdate":
-                    var newStart = DateOnly.Parse(value);
-                    if (newStart < DateOnly.FromDateTime(DateTime.Today))
-                        throw new Exception("لا يمكن تغيير تاريخ البداية لتاريخ في الماضي");
-                    if (newStart >= trip.EndDate)
-                        throw new Exception("تاريخ البداية لازم يكون قبل تاريخ النهاية");
-                    trip.StartDate = newStart;
-                    break;
-
-                case "enddate":
-                    var newEnd = DateOnly.Parse(value);
-                    if (newEnd < DateOnly.FromDateTime(DateTime.Today))
-                        throw new Exception("لا يمكن تغيير تاريخ النهاية لتاريخ في الماضي");
-                    if (newEnd <= trip.StartDate)
-                        throw new Exception("تاريخ النهاية لازم يكون بعد تاريخ البداية");
-                    trip.EndDate = newEnd;
-                    break;
-                case "numtravelers":
-                    trip.NumTravelers = int.Parse(value);
-                    break;
-                case "budgettotal":
-                    trip.BudgetTotal = decimal.Parse(value);
-                    break;
-                case "origincity":
-                    trip.OriginCity = value;
-                    break;
-            }
-
-            _tripRepo.Update(trip);
-            await _unitOfWork.CompleteAsync(); 
-            return field.ToLower();
-
-            
         }
 
         public async Task<ChatSession> CreateSessionAsync(string userId)
         {
-            var session = await _chatRepo.CreateSessionAsync(userId);
-            await _chatRepo.SaveChangesAsync();
-            return session;
+            try
+            {
+                _logger.LogInformation("Creating new chat session for UserId: {UserId}", userId);
+
+                var session = await _chatRepo.CreateSessionAsync(userId);
+                await _chatRepo.SaveChangesAsync();
+
+                _logger.LogInformation("Chat session created successfully. SessionId: {SessionId}, UserId: {UserId}", session.Id, userId);
+                return session;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to create chat session for UserId: {UserId}. Error: {ErrorMessage}", userId, ex.Message);
+                throw;
+            }
         }
 
         public async Task<List<ChatSession>> GetUserSessionsAsync(string userId)
         {
-            return await _chatRepo.GetSessionsByUserAsync(userId);
+            try
+            {
+                _logger.LogInformation("Retrieving chat sessions for UserId: {UserId}", userId);
+
+                var sessions = await _chatRepo.GetSessionsByUserAsync(userId);
+
+                _logger.LogInformation("Retrieved {SessionCount} chat sessions for UserId: {UserId}", sessions.Count, userId);
+                return sessions;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to retrieve chat sessions for UserId: {UserId}. Error: {ErrorMessage}", userId, ex.Message);
+                throw;
+            }
         }
 
         public async Task<List<ChatMessage>> GetHistoryAsync(Guid sessionId, string userId)
         {
-            var session = await _chatRepo.GetSessionAsync(sessionId);
-            if (session == null || session.UserId != userId)
-                throw new UnauthorizedAccessException("You do not have access to this session.");
+            try
+            {
+                _logger.LogInformation("Retrieving chat history for SessionId: {SessionId}, UserId: {UserId}", sessionId, userId);
 
-            return await _chatRepo.GetMessagesAsync(sessionId);
+                var session = await _chatRepo.GetSessionAsync(sessionId);
+                if (session == null || session.UserId != userId)
+                {
+                    _logger.LogWarning("Unauthorized access to chat history. SessionId: {SessionId}, UserId: {UserId}", sessionId, userId);
+                    throw new UnauthorizedAccessException("You do not have access to this session.");
+                }
+
+                var history = await _chatRepo.GetMessagesAsync(sessionId);
+
+                _logger.LogInformation("Retrieved {MessageCount} messages from session history. SessionId: {SessionId}", history.Count, sessionId);
+                return history;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to retrieve chat history. SessionId: {SessionId}, UserId: {UserId}. Error: {ErrorMessage}", 
+                    sessionId, userId, ex.Message);
+                throw;
+            }
         }
 
         public async Task<TripPlanDto?> GetTripPlanAsync(Guid tripId, string userId)
         {
             try
             {
+                _logger.LogInformation("Retrieving trip plan. TripId: {TripId}, UserId: {UserId}", tripId, userId);
+
                 var profile = await _userProfileRepo.GetUserProfileWithPreferencesAsync(userId);
-                if (profile == null) return null;
+                if (profile == null)
+                {
+                    _logger.LogWarning("User profile not found. UserId: {UserId}", userId);
+                    return null;
+                }
 
                 var trip = await _tripRepo.GetByIdAsync(tripId);
                 if (trip == null || trip.UserId != profile.Id)
+                {
+                    _logger.LogWarning("Trip not found or unauthorized access. TripId: {TripId}, UserId: {UserId}", tripId, userId);
                     return null;
+                }
 
-                return await _orchestrator.GetCurrentPlanAsync(tripId);
+                var plan = await _orchestrator.GetCurrentPlanAsync(tripId);
+                _logger.LogInformation("Trip plan retrieved successfully. TripId: {TripId}", tripId);
+
+                return plan;
             }
-            catch
+            catch (Exception ex)
             {
+                _logger.LogError(ex, "Failed to retrieve trip plan. TripId: {TripId}, UserId: {UserId}. Error: {ErrorMessage}", 
+                    tripId, userId, ex.Message);
                 return null;
             }
         }
         
         public async Task LinkSessionToTripAsync(Guid sessionId, string userId, Guid tripId)
         {
-            var session = await _chatRepo.GetSessionAsync(sessionId);
-            if (session == null)
-                throw new Exception("Session not found");
+            try
+            {
+                _logger.LogInformation("Linking chat session to trip. SessionId: {SessionId}, UserId: {UserId}, TripId: {TripId}", 
+                    sessionId, userId, tripId);
 
-            if (session.UserId != userId)
-                throw new UnauthorizedAccessException("You do not have access to this session.");
+                var session = await _chatRepo.GetSessionAsync(sessionId);
+                if (session == null)
+                {
+                    _logger.LogWarning("Chat session not found. SessionId: {SessionId}", sessionId);
+                    throw new Exception("Session not found");
+                }
 
-            session.TripId = tripId;
-            session.Stage = ChatStage.PlanReady;
-            session.UpdatedAt = DateTime.UtcNow;
+                if (session.UserId != userId)
+                {
+                    _logger.LogWarning("Unauthorized access to session. SessionId: {SessionId}, UserId: {UserId}", sessionId, userId);
+                    throw new UnauthorizedAccessException("You do not have access to this session.");
+                }
 
-            await _chatRepo.SaveChangesAsync();
+                session.TripId = tripId;
+                session.Stage = ChatStage.PlanReady;
+                session.UpdatedAt = DateTime.UtcNow;
+
+                await _chatRepo.SaveChangesAsync();
+
+                _logger.LogInformation("Chat session linked to trip successfully. SessionId: {SessionId}, TripId: {TripId}", sessionId, tripId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to link session to trip. SessionId: {SessionId}, TripId: {TripId}. Error: {ErrorMessage}", 
+                    sessionId, tripId, ex.Message);
+                throw;
+            }
         }
 
         public async Task<ChatSession> GetOrCreateTripSessionAsync(Guid tripId, string userId)
         {
-            // لو فيه Session موجودة للرحلة، رجعها
-            var existingSession = await _chatRepo.GetSessionByTripIdAsync(tripId, userId);
+            try
+            {
+                _logger.LogInformation("Getting or creating chat session for trip. TripId: {TripId}, UserId: {UserId}", tripId, userId);
 
-            if (existingSession != null)
-                return existingSession;
+                // لو فيه Session موجودة للرحلة، رجعها
+                var existingSession = await _chatRepo.GetSessionByTripIdAsync(tripId, userId);
 
-            // لو مفيش، اعمل Session جديدة
-            var session = await _chatRepo.CreateSessionAsync(userId);
+                if (existingSession != null)
+                {
+                    _logger.LogInformation("Existing chat session found for trip. TripId: {TripId}, SessionId: {SessionId}", tripId, existingSession.Id);
+                    return existingSession;
+                }
 
-            session.TripId = tripId;
-            session.Stage = ChatStage.PlanReady;
+                // لو مفيش، اعمل Session جديدة
+                var session = await _chatRepo.CreateSessionAsync(userId);
 
-            await _chatRepo.SaveChangesAsync();
+                session.TripId = tripId;
+                session.Stage = ChatStage.PlanReady;
 
-            return session;
+                await _chatRepo.SaveChangesAsync();
+
+                _logger.LogInformation("New chat session created for trip. TripId: {TripId}, SessionId: {SessionId}, UserId: {UserId}", 
+                    tripId, session.Id, userId);
+
+                return session;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to get or create chat session for trip. TripId: {TripId}, UserId: {UserId}. Error: {ErrorMessage}", 
+                    tripId, userId, ex.Message);
+                throw;
+            }
         }
     }
 }

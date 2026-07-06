@@ -44,6 +44,13 @@ namespace SmartTravelPlaners.DAL.Configurations
 
             builder.Property(pc => pc.CachedAt)
                 .IsRequired();
+
+            builder.Property(pc => pc.NormalizedQuery)
+                .HasMaxLength(200);
+
+            builder.Property(pc => pc.LastUsedAt);
+
+            builder.HasIndex(pc => pc.NormalizedQuery);
         }
     }
 }

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using SmartTravelPlaners.BLL.Features.Flight.DTOs;
 using SmartTravelPlaners.BLL.Features.Flight.Interfaces;
 
@@ -9,10 +10,12 @@ namespace SmartTravelPlaners.PL.Controllers
     public class FlightController : ControllerBase
     {
         private readonly IFlightService _flightService;
+        private readonly ILogger<FlightController> _logger;
 
-        public FlightController(IFlightService flightService)
+        public FlightController(IFlightService flightService, ILogger<FlightController> logger)
         {
             _flightService = flightService;
+            _logger = logger;
         }
 
         // Search for one-way or round-trip flights by city name
@@ -27,7 +30,12 @@ namespace SmartTravelPlaners.PL.Controllers
             try
             {
                 if (tripType == TripType.RoundTrip && string.IsNullOrWhiteSpace(returnDate))
+                {
+                    _logger.LogWarning("Flight search attempted with RoundTrip but no return date. Departure: {Departure}, Arrival: {Arrival}", departure, arrival);
                     return BadRequest(new { error = "returnDate is required for RoundTrip" });
+                }
+
+                _logger.LogInformation("Flight search initiated. Departure: {Departure}, Arrival: {Arrival}, DepartureDate: {DepartureDate}, TripType: {TripType}", departure, arrival, departureDate, tripType);
 
                 var request = new FlightSearchRequest
                 {
@@ -39,6 +47,8 @@ namespace SmartTravelPlaners.PL.Controllers
                 };
 
                 var result = await _flightService.SearchFlightsAsync(request);
+
+                _logger.LogInformation("Flight search completed successfully. OutboundFlights: {OutboundCount}, ReturnFlights: {ReturnCount}", result.OutboundFlights.Count, result.ReturnFlights?.Count ?? 0);
 
                 return Ok(new
                 {
@@ -54,6 +64,7 @@ namespace SmartTravelPlaners.PL.Controllers
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "Flight search failed. Departure: {Departure}, Arrival: {Arrival}, Error: {ErrorMessage}", departure, arrival, ex.Message);
                 return StatusCode(500, new
                 {
                     error = ex.Message,
