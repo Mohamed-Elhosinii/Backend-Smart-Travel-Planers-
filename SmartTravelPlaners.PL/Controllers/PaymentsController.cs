@@ -32,7 +32,7 @@ namespace SmartTravelPlaners.PL.Controllers
         /// Always returns 200 OK per Paymob's requirements.
         /// </summary>
         [HttpPost("webhook")]
-        public async Task<IActionResult> Webhook()
+        public async Task<IActionResult> Webhook([FromQuery] string hmac)
         {
             try
             {
@@ -63,7 +63,11 @@ namespace SmartTravelPlaners.PL.Controllers
                 // CRITICAL: Verify HMAC BEFORE trusting any payload fields
                 // ============================================================
                 var hmacFields = BuildHmacFields(payload.Obj);
-                var isValid = _paymobService.VerifyHmac(hmacFields, payload.Hmac);
+                
+                // Paymob sends HMAC in query string, but we also check payload just in case
+                var actualHmac = !string.IsNullOrEmpty(hmac) ? hmac : payload.Hmac;
+                
+                var isValid = _paymobService.VerifyHmac(hmacFields, actualHmac);
 
                 if (!isValid)
                 {
@@ -83,7 +87,7 @@ namespace SmartTravelPlaners.PL.Controllers
                     return Ok();
                 }
 
-                var merchantOrderId = payload.Obj.MerchantOrderId;
+                var merchantOrderId = payload.Obj.Order?.MerchantOrderId ?? payload.Obj.MerchantOrderId;
                 var transactionId = payload.Obj.Id.ToString();
 
                 if (string.IsNullOrEmpty(merchantOrderId))

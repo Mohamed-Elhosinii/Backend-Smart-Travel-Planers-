@@ -45,3 +45,6 @@ project.assets.json
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+
+#appsetting
+**/appsettings.json

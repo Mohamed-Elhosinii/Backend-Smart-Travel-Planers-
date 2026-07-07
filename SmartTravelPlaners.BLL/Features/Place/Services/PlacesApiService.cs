@@ -43,10 +43,31 @@ namespace SmartTravelPlaners.BLL.Features.Place.Services
             {
                 _logger.LogInformation("Searching places. City: {City}, Query: {Query}, Limit: {Limit}", city, query ?? "none", limit);
 
-                var url = $"/places/search?near={Uri.EscapeDataString(city)}&limit={limit}";
+                var url = $"/places/search?near={Uri.EscapeDataString(city)}&limit={limit}&sort=POPULARITY";
+
+                string categoryIds = "";
+                string? textQuery = query;
 
                 if (!string.IsNullOrEmpty(query))
-                    url += $"&query={Uri.EscapeDataString(query)}";
+                {
+                    var q = query.ToLower();
+                    switch (q)
+                    {
+                        case "attraction": categoryIds = "10000,16000"; textQuery = null; break;
+                        case "restaurant": categoryIds = "13065"; textQuery = null; break;
+                        case "cafe": categoryIds = "13032"; textQuery = null; break;
+                        case "museum": categoryIds = "10027"; textQuery = null; break;
+                        case "park": categoryIds = "16032"; textQuery = null; break;
+                        case "shopping": categoryIds = "17000"; textQuery = null; break;
+                        default: categoryIds = "10000,13000,16000,17000,18000"; break; // Excludes pharmacies/stations
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(categoryIds))
+                    url += $"&categories={categoryIds}";
+
+                if (!string.IsNullOrEmpty(textQuery))
+                    url += $"&query={Uri.EscapeDataString(textQuery)}";
 
                 var request = new HttpRequestMessage(HttpMethod.Get, url);
 
@@ -87,6 +108,81 @@ namespace SmartTravelPlaners.BLL.Features.Place.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to search places for city: {City}. Error: {ErrorMessage}", city, ex.Message);
+                throw;
+            }
+        }
+
+        // ================= SEARCH BY COORDS =================
+        public async Task<List<PlaceDto>> SearchByCoordsAsync(double lat, double lng, string? query = null, int limit = 20)
+        {
+            try
+            {
+                _logger.LogInformation("Searching places by coords. Lat: {Lat}, Lng: {Lng}, Query: {Query}, Limit: {Limit}", lat, lng, query ?? "none", limit);
+
+                var url = $"/places/search?ll={lat},{lng}&radius=20000&limit={limit}&sort=POPULARITY";
+
+                string categoryIds = "";
+                string? textQuery = query;
+
+                if (!string.IsNullOrEmpty(query))
+                {
+                    var q = query.ToLower();
+                    switch (q)
+                    {
+                        case "attraction": categoryIds = "10000,16000"; textQuery = null; break;
+                        case "restaurant": categoryIds = "13065"; textQuery = null; break;
+                        case "cafe": categoryIds = "13032"; textQuery = null; break;
+                        case "museum": categoryIds = "10027"; textQuery = null; break;
+                        case "park": categoryIds = "16032"; textQuery = null; break;
+                        case "shopping": categoryIds = "17000"; textQuery = null; break;
+                        default: categoryIds = "10000,13000,16000,17000,18000"; break; // Excludes pharmacies/stations
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(categoryIds))
+                    url += $"&categories={categoryIds}";
+
+                if (!string.IsNullOrEmpty(textQuery))
+                    url += $"&query={Uri.EscapeDataString(textQuery)}";
+
+                var request = new HttpRequestMessage(HttpMethod.Get, url);
+
+                request.Headers.Authorization =
+                    new AuthenticationHeaderValue("Bearer", _foursquareSettings.ServiceKey);
+
+                request.Headers.Add("X-Places-Api-Version", _foursquareSettings.PlacesVersion);
+
+                var response = await _foursquareHttp.SendAsync(request);
+                response.EnsureSuccessStatusCode();
+
+                var contentString = response.Content == null ? null : await response.Content.ReadAsStringAsync();
+                if (string.IsNullOrWhiteSpace(contentString))
+                {
+                    _logger.LogWarning("Empty response from Foursquare API for coords: {Lat},{Lng}", lat, lng);
+                    return new();
+                }
+
+                var result = JsonSerializer.Deserialize<FoursquareSearchResponse>(contentString, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+                if (result == null)
+                {
+                    _logger.LogWarning("Failed to deserialize Foursquare response for coords: {Lat},{Lng}", lat, lng);
+                    return new();
+                }
+
+                var places = result.results
+                   .Select(p => p.ToDto())
+                   .ToList();
+
+                _logger.LogInformation("Places search by coords completed. ResultCount: {ResultCount}", places.Count);
+                return places;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to search places for coords: {Lat},{Lng}. Error: {ErrorMessage}", lat, lng, ex.Message);
                 throw;
             }
         }
