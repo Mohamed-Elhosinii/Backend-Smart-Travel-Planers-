@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 
 namespace SmartTravelPlaners.BLL.Features.Weather.DTOs
 {
@@ -9,6 +9,12 @@ namespace SmartTravelPlaners.BLL.Features.Weather.DTOs
 
         [JsonPropertyName("resolvedAddress")]
         public string ResolvedAddress { get; set; } = string.Empty; 
+
+        [JsonPropertyName("latitude")]
+        public double Latitude { get; set; }
+
+        [JsonPropertyName("longitude")]
+        public double Longitude { get; set; }
 
         [JsonPropertyName("days")]
         public List<VisualCrossingDayItem> Days { get; set; } = new();

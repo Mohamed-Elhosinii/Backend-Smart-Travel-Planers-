@@ -1,4 +1,4 @@
-﻿using SmartTravelPlaners.BLL.Features.Place.DTOs;
+using SmartTravelPlaners.BLL.Features.Place.DTOs;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -10,6 +10,7 @@ namespace SmartTravelPlaners.BLL.Features.Place.Interfaces
        
 
         Task<List<PlaceDto>> SearchAsync( string city, string? query = null, int limit = 20);
+        Task<List<PlaceDto>> SearchByCoordsAsync(double lat, double lng, string? query = null, int limit = 20);
       
 
 

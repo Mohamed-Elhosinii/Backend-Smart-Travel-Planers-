@@ -56,6 +56,29 @@ namespace SmartTravelPlaners.BLL.Features.Place.Plugins
         }
 
         //Place details
+        public async Task<List<PlaceDto>> SearchByCoordsAsync(double lat, double lng, string? category, string city)
+        {
+            var places = await _service.SearchByCoordsAsync(lat, lng, category);
+
+            if (places == null || places.Count == 0)
+                return new List<PlaceDto>();
+
+            var result = places.Select(p => new PlaceDto
+            {
+                FsqPlaceId = p.FsqPlaceId,
+                Name = p.Name,
+                Address = p.Address,
+                Category = p.Category,
+                Latitude = p.Latitude,
+                Longitude = p.Longitude,
+                Images = new List<PlacePhotoDto>()
+            }).ToList();
+
+            _logger.LogInformation("SearchByCoordsAsync lat={Lat} lng={Lng} category={Category} returned {Count} places", lat, lng, category, result.Count);
+            return result;
+        }
+
+        //Place details
         [KernelFunction]
         [Description("Get detailed information about a specific place using its unique place identifier from search results")]
         public async Task<string> Details([Description("Unique identifier of the place returned from search results")] string id)

@@ -100,10 +100,10 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                     }
                 }
 
-                // Fetch the weather forecast and the day-by-day activities concurrently.
-                var weatherTask = GetWeatherAsync(trip.Destination, trip.StartDate, trip.EndDate);
-                var dayPlans = await BuildDayPlansAsync(trip, numberOfDays, activitiesBudget);
-                var weather = await weatherTask;
+                // Fetch the weather forecast first so we can use it to plan days intelligently.
+                var weatherResult = await GetWeatherAsync(trip.Destination, trip.StartDate, trip.EndDate);
+                var weather = weatherResult.Weather;
+                var dayPlans = await BuildDayPlansAsync(trip, numberOfDays, activitiesBudget, weather, weatherResult.Lat, weatherResult.Lng);
 
                 AttachWeatherToDays(dayPlans, weather);
 
@@ -202,39 +202,41 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
         // ============================================================
         // Weather: fetch the destination forecast and map it to the plan
         // ============================================================
-        private async Task<List<DayWeatherDto>> GetWeatherAsync(string city, DateOnly startDate, DateOnly endDate)
+        private async Task<(List<DayWeatherDto> Weather, double Lat, double Lng)> GetWeatherAsync(string city, DateOnly startDate, DateOnly endDate)
         {
             try
             {
                 var start = startDate.ToString("yyyy-MM-dd");
                 var end = endDate.ToString("yyyy-MM-dd");
 
-                // Don't let a slow/hanging weather API block the whole plan (5s cap).
+                // Don't let a slow/hanging weather API block the whole plan (15s cap).
                 var task = _weatherPlugin.GetWeatherTimeline(city, start, end);
-                var completed = await Task.WhenAny(task, Task.Delay(5000));
+                var completed = await Task.WhenAny(task, Task.Delay(15000));
                 if (completed != task)
-                    return new List<DayWeatherDto>();
+                    return (new List<DayWeatherDto>(), 0, 0);
 
                 var rawJson = await task;
                 var response = TryDeserialize<VisualCrossingResponseDto>(rawJson);
                 
                 if (response is null || response.Days is null)
-                    return new List<DayWeatherDto>();
+                    return (new List<DayWeatherDto>(), 0, 0);
 
-                return response.Days.Select(d => new DayWeatherDto
+                var weatherList = response.Days.Select(d => new DayWeatherDto
                 {
                     Date = DateOnly.TryParse(d.Datetime, out var dt) ? dt : startDate,
                     TempMax = d.TempMax,
                     TempMin = d.TempMin,
-                    Humidity = d.Humidity,
-                    PrecipProb = d.PrecipProb,
                     Conditions = d.Conditions,
-                    IconUrl = d.IconUrl
+                    IconUrl = d.IconUrl,
+                    PrecipProb = d.PrecipProb
                 }).ToList();
+
+                return (weatherList, response.Latitude, response.Longitude);
             }
-            catch
+            catch (Exception ex)
             {
-                return new List<DayWeatherDto>();
+                _logger.LogError(ex, "Failed to map weather forecast for city: {City}", city);
+                return (new List<DayWeatherDto>(), 0, 0);
             }
         }
 
@@ -255,23 +257,26 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
 
 
         private async Task<List<DayPlanDto>> BuildDayPlansAsync(
-            Trip trip, int numberOfDays, decimal activitiesBudget)
+            Trip trip, int numberOfDays, decimal activitiesBudget, List<DayWeatherDto> weatherList, double lat, double lng)
         {
             var dailyBudget = numberOfDays > 0 ? activitiesBudget / numberOfDays : 0;
             var usedPlaceIds = new HashSet<string>();
             var days = new List<DayPlanDto>();
 
 
-            var categories = new List<string> { "attraction", "restaurant", "cafe", "museum", "park", "shopping" };
+            var baseCategories = new List<string> { "attraction", "restaurant", "cafe", "museum", "park", "shopping" };
+            var userPrefs = new List<string>();
+            var categories = baseCategories.ToList();
+
             if (trip.Preferences != null && trip.Preferences.Any())
             {
-                var prefs = trip.Preferences.Select(p => p.Value.ToLower()).ToList();
-                categories = categories.Union(prefs).ToList();
+                userPrefs = trip.Preferences.Select(p => p.Value.ToLower()).Distinct().ToList();
+                categories = categories.Union(userPrefs).ToList();
             }
 
             var categoryTasks = categories.ToDictionary(
                 c => c, 
-                c => SearchPlaces(trip.Destination, c)
+                c => SearchPlacesByCoords(lat, lng, c, trip.Destination)
             );
 
             await Task.WhenAll(categoryTasks.Values);
@@ -293,7 +298,38 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 int activitiesToday = random.Next(2, 5);
                 var costPerActivity = activitiesToday > 0 ? dailyBudget / activitiesToday : 0;
 
-                var dailyCategories = categories.OrderBy(x => random.Next()).Take(activitiesToday).ToList();
+                var currentDayWeather = weatherList.FirstOrDefault(w => w.Date == date);
+                var isRainy = currentDayWeather != null && 
+                              (currentDayWeather.PrecipProb > 30 || (currentDayWeather.Conditions ?? "").Contains("Rain", StringComparison.OrdinalIgnoreCase));
+
+                var validCategories = categories.ToList();
+                if (isRainy)
+                {
+                    validCategories.Remove("park");
+                    // Can add more outdoor categories here if needed
+                }
+
+                var validPrefs = userPrefs.Where(p => validCategories.Contains(p)).ToList();
+                var dailyCategories = new List<string>();
+
+                // Prioritize user preferences (take up to 2, or 1 if day is short)
+                if (validPrefs.Any())
+                {
+                    int prefsToTake = Math.Min(validPrefs.Count, activitiesToday > 2 ? 2 : 1);
+                    var selectedPrefs = validPrefs.OrderBy(x => random.Next()).Take(prefsToTake).ToList();
+                    dailyCategories.AddRange(selectedPrefs);
+                    validCategories = validCategories.Except(selectedPrefs).ToList();
+                }
+
+                // Fill the rest with random categories
+                int remaining = activitiesToday - dailyCategories.Count;
+                if (remaining > 0)
+                {
+                    dailyCategories.AddRange(validCategories.OrderBy(x => random.Next()).Take(remaining));
+                }
+
+                // Shuffle the final list so preferences aren't always first in the day
+                dailyCategories = dailyCategories.OrderBy(x => random.Next()).ToList();
                 var dailySlots = timeSlots.OrderBy(x => random.Next()).Take(activitiesToday).OrderBy(x => Array.IndexOf(timeSlots, x)).ToList();
 
                 for (int i = 0; i < activitiesToday; i++)
@@ -317,12 +353,32 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
             return days;
         }
 
+        private async Task<List<PlaceDto>> SearchPlacesByCoords(double lat, double lng, string category, string city)
+        {
+            try
+            {
+                var task = _placesPlugin.SearchByCoordsAsync(lat, lng, category, city);
+                var result = await Task.WhenAny(task, Task.Delay(15000));
+
+                if (result != task)
+                    return new List<PlaceDto>();
+
+                var places = await task;
+                return places ?? new List<PlaceDto>();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to fetch places by coords for city: {City}, Category: {Category}", city, category);
+                return new List<PlaceDto>();
+            }
+        }
+
         private async Task<List<PlaceDto>> SearchPlaces(string city, string category)
         {
             try
             {
                 var task = _placesPlugin.SearchWithImages(city, category);
-                var result = await Task.WhenAny(task, Task.Delay(5000));
+                var result = await Task.WhenAny(task, Task.Delay(15000));
 
                 if (result != task)
                     return new List<PlaceDto>();
@@ -961,8 +1017,8 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
             await _unitOfWork.CompleteAsync();
 
             
-            var weather = await GetWeatherAsync(trip.Destination, trip.StartDate, trip.EndDate);
-            foreach (var w in weather)
+            var weatherResult = await GetWeatherAsync(trip.Destination, trip.StartDate, trip.EndDate);
+            foreach (var w in weatherResult.Weather)
             {
                 await _unitOfWork.Repository<WeatherDay>().AddAsync(new WeatherDay
                 {
