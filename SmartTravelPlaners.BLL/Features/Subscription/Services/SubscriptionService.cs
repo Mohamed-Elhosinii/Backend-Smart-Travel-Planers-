@@ -110,14 +110,27 @@ namespace SmartTravelPlaners.BLL.Features.Subscription.Services
 
             var userProfile = await GetUserProfileAsync(userId);
 
-            // Cancel any existing active subscription first
+            // Cancel any existing active subscription first (if upgrading)
             var existingSubs = await _unitOfWork.Repository<DAL.Entities.Subscription>()
                 .FindAsync(s => s.UserProfileId == userProfile.Id
                              && s.Status == SubscriptionStatus.Active);
 
             foreach (var existing in existingSubs)
             {
-                _logger.LogInformation("Cancelling existing subscription {SubscriptionId} for user {UserId}.",
+                var existingPlan = await _unitOfWork.Repository<Plan>().GetByIdAsync(existing.PlanId);
+                if (existingPlan != null && plan.PriceMonthly <= existingPlan.PriceMonthly)
+                {
+                    // Allow them to "re-subscribe" to a free plan ONLY if their current is free.
+                    // But actually if they already have free, they don't need to subscribe again.
+                    if (existingPlan.PriceMonthly == 0 && plan.PriceMonthly == 0)
+                    {
+                        return null; // Already on free plan, just return silently
+                    }
+                    
+                    throw new InvalidOperationException($"You currently have an active '{existingPlan.Name}' subscription. You cannot downgrade or re-subscribe to the same plan while it is still active.");
+                }
+
+                _logger.LogInformation("Cancelling existing subscription {SubscriptionId} for user {UserId} due to upgrade.",
                     existing.Id, userId);
 
                 existing.Status = SubscriptionStatus.Cancelled;
@@ -171,7 +184,7 @@ namespace SmartTravelPlaners.BLL.Features.Subscription.Services
             try
             {
                 var iframeUrl = await _paymobService.InitiatePaymentAsync(
-                    userId, plan, subscription.Id, merchantOrderId);
+                    userProfile, plan, subscription.Id, merchantOrderId);
 
                 _logger.LogInformation("Paid subscription {SubscriptionId} created successfully for user {UserId}. Payment initiated.",
                     subscription.Id, userId);
@@ -203,6 +216,12 @@ namespace SmartTravelPlaners.BLL.Features.Subscription.Services
                 throw new Exception($"PaymentTransaction not found for order: {paymobOrderId}");
             }
 
+            if (transaction.Status == "paid")
+            {
+                _logger.LogWarning("Transaction {TransactionId} already paid. Skipping activation (Idempotency).", transaction.Id);
+                return;
+            }
+
             // Update the payment transaction
             transaction.PaymobTransactionId = paymobTransactionId;
             transaction.Status = "paid";
@@ -223,6 +242,14 @@ namespace SmartTravelPlaners.BLL.Features.Subscription.Services
             subscription.CurrentPeriodStart = now;
             subscription.CurrentPeriodEnd = now.AddMonths(1);
             _unitOfWork.Repository<DAL.Entities.Subscription>().Update(subscription);
+
+            // Reset usage counters
+            var userProfiles = await _unitOfWork.UserProfiles.FindAsync(p => p.Id == subscription.UserProfileId);
+            var user = userProfiles.FirstOrDefault();
+            if (user != null)
+            {
+                await _usageLimitService.ResetUsageAsync(user.AspNetUserId);
+            }
 
             try
             {
@@ -265,21 +292,31 @@ namespace SmartTravelPlaners.BLL.Features.Subscription.Services
                 var paidTransaction = transactions.FirstOrDefault();
                 if (paidTransaction != null && !string.IsNullOrEmpty(paidTransaction.PaymobTransactionId))
                 {
-                    // Refund via Paymob
-                    await _paymobService.RefundPaymentAsync(paidTransaction.PaymobTransactionId, paidTransaction.Amount);
+                    var daysSinceSubscribed = (DateTime.UtcNow - paidTransaction.CreatedAt).Days;
+                    if (daysSinceSubscribed <= 3)
+                    {
+                        // Refund via Paymob
+                        await _paymobService.RefundPaymentAsync(paidTransaction.PaymobTransactionId, paidTransaction.Amount);
 
-                    // Mark transaction as refunded
-                    paidTransaction.Status = "refunded";
-                    _unitOfWork.Repository<PaymentTransaction>().Update(paidTransaction);
+                        // Mark transaction as refunded
+                        paidTransaction.Status = "refunded";
+                        _unitOfWork.Repository<PaymentTransaction>().Update(paidTransaction);
 
-                    _logger.LogInformation("Refund processed for subscription {SubscriptionId} and user {UserId}.",
-                        sub.Id, userId);
+                        _logger.LogInformation("Refund processed for subscription {SubscriptionId} and user {UserId}. Days since payment: {Days}",
+                            sub.Id, userId, daysSinceSubscribed);
+
+                        sub.Status = SubscriptionStatus.Cancelled;
+                        _unitOfWork.Repository<DAL.Entities.Subscription>().Update(sub);
+
+                        _logger.LogInformation("Subscription {SubscriptionId} cancelled for user {UserId}.", sub.Id, userId);
+                    }
+                    else
+                    {
+                        _logger.LogInformation("Refund NOT processed for subscription {SubscriptionId} and user {UserId}. Passed {Days} days (limit is 3).",
+                            sub.Id, userId, daysSinceSubscribed);
+                        throw new InvalidOperationException("Refund period has expired. Your subscription will remain active until the end of the current billing period.");
+                    }
                 }
-
-                sub.Status = SubscriptionStatus.Cancelled;
-                _unitOfWork.Repository<DAL.Entities.Subscription>().Update(sub);
-
-                _logger.LogInformation("Subscription {SubscriptionId} cancelled for user {UserId}.", sub.Id, userId);
             }
 
             try

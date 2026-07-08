@@ -85,6 +85,11 @@ namespace SmartTravelPlaners.PL.Controllers
                 _logger.LogInformation("Subscription created successfully for UserId: {UserId}, PlanId: {PlanId}", userId, dto.PlanId);
                 return Ok(new { iframeUrl });
             }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(ex, "Subscription creation failed due to business logic for UserId: {UserId}, PlanId: {PlanId}. Reason: {Reason}", userId, dto.PlanId, ex.Message);
+                return BadRequest(new { message = ex.Message });
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Subscription creation failed for UserId: {UserId}, PlanId: {PlanId}. Error: {ErrorMessage}", userId, dto.PlanId, ex.Message);
@@ -109,6 +114,11 @@ namespace SmartTravelPlaners.PL.Controllers
                 await _subscriptionService.CancelSubscriptionAsync(userId);
                 _logger.LogInformation("Subscription cancelled successfully for UserId: {UserId}", userId);
                 return Ok(new { message = "Subscription cancelled successfully." });
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(ex, "Subscription cancellation failed for UserId: {UserId}. Reason: {Reason}", userId, ex.Message);
+                return BadRequest(new { message = ex.Message });
             }
             catch (Exception ex)
             {

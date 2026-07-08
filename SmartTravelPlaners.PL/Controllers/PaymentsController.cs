@@ -14,15 +14,18 @@ namespace SmartTravelPlaners.PL.Controllers
         private readonly ISubscriptionService _subscriptionService;
         private readonly IPaymobService _paymobService;
         private readonly ILogger<PaymentsController> _logger;
+        private readonly IConfiguration _configuration;
 
         public PaymentsController(
             ISubscriptionService subscriptionService,
             IPaymobService paymobService,
-            ILogger<PaymentsController> logger)
+            ILogger<PaymentsController> logger,
+            IConfiguration configuration)
         {
             _subscriptionService = subscriptionService;
             _paymobService = paymobService;
             _logger = logger;
+            _configuration = configuration;
         }
 
         /// <summary>
@@ -132,11 +135,9 @@ namespace SmartTravelPlaners.PL.Controllers
         [HttpGet("callback")]
         public IActionResult Callback()
         {
-            return Ok(new
-            {
-                message = "Payment is being processed. You will receive confirmation shortly.",
-                status = "processing"
-            });
+            var queryString = Request.QueryString.Value;
+            var frontendUrl = _configuration["FrontendUrl"] ?? "https://frontend-smart-travel-planers.vercel.app";
+            return Redirect($"{frontendUrl}/payment-status" + queryString);
         }
 
         /// <summary>

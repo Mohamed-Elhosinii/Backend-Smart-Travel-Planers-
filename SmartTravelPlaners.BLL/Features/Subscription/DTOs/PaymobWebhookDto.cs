@@ -72,7 +72,7 @@ namespace SmartTravelPlaners.BLL.Features.Subscription.DTOs
         public int Id { get; set; }
 
         [JsonPropertyName("merchant_order_id")]
-        public string? MerchantOrderId { get; set; }
+        public string MerchantOrderId { get; set; } = string.Empty;
     }
 
     public class PaymobSourceDataDto

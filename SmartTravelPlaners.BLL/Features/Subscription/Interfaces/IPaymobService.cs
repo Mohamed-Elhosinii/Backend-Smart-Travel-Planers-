@@ -11,13 +11,13 @@ namespace SmartTravelPlaners.BLL.Features.Subscription.Interfaces
         Task<int> CreateOrderAsync(int amountCents, string authToken, string merchantOrderId);
 
         /// <summary>Step 3: Get a payment key for the iframe.</summary>
-        Task<string> GetPaymentKeyAsync(int orderId, int amountCents, string authToken);
+        Task<string> GetPaymentKeyAsync(int orderId, int amountCents, string authToken, UserProfile userProfile);
 
         /// <summary>
         /// Combines the 3-step flow (auth → order → payment key) and returns
         /// the full iframe URL the client should redirect to.
         /// </summary>
-        Task<string> InitiatePaymentAsync(string userId, Plan plan, Guid subscriptionId, string paymobOrderId);
+        Task<string> InitiatePaymentAsync(UserProfile userProfile, Plan plan, Guid subscriptionId, string paymobOrderId);
 
         /// <summary>
         /// Verifies the HMAC signature on a Paymob webhook payload.

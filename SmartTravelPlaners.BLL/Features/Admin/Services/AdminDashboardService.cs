@@ -39,7 +39,7 @@ namespace SmartTravelPlaners.BLL.Features.Admin.Services
                 var activeSubs = await _context.Subscriptions.CountAsync(s => s.Status == SubscriptionStatus.Active);
                 var totalRevenue = await _context.PaymentTransactions
                     .Where(t => t.Status == "paid")
-                    .SumAsync(t => t.Amount);
+                    .SumAsync(t => (decimal?)t.Amount) ?? 0;
 
                 // Last 6 months revenue history
                 var sixMonthsAgo = DateTime.UtcNow.AddMonths(-6);

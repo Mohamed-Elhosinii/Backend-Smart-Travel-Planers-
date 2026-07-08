@@ -1,9 +1,9 @@
 using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Facebook;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using Microsoft.AspNetCore.RateLimiting;
 using SmartTravelPlaners.BLL.DTOs.Auth;
 using SmartTravelPlaners.BLL.DTOs.Common;
 using SmartTravelPlaners.BLL.Services.Abstract;
@@ -13,6 +13,7 @@ namespace SmartTravelPlaners.PL.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [EnableRateLimiting("AuthPolicy")]
     public class AuthController : ControllerBase
     {
         private readonly IAuthService _authService;
@@ -208,6 +209,7 @@ namespace SmartTravelPlaners.PL.Controllers
         [HttpGet("google-callback")]
         public async Task<IActionResult> GoogleCallback()
         {
+            var frontendUrl = _configuration["FrontendUrl"] ?? "https://frontend-smart-travel-planers.vercel.app";
             try
             {
                 _logger.LogInformation("Google authentication callback initiated");
@@ -215,8 +217,7 @@ namespace SmartTravelPlaners.PL.Controllers
                 if (!result.Succeeded)
                 {
                     _logger.LogWarning("Google authentication failed");
-                    // Redirect to Angular with error
-                    return Redirect("http://localhost:4200/auth/login?error=google_auth_failed");
+                    return Redirect($"{frontendUrl}/login?error=google_auth_failed");
                 }
 
                 var email = result.Principal.FindFirstValue(ClaimTypes.Email)!;
@@ -227,8 +228,7 @@ namespace SmartTravelPlaners.PL.Controllers
                 var response = await _authService.OAuthLoginAsync(email, fullName, "Google", providerKey);
 
                 _logger.LogInformation("Google OAuth login completed successfully for UserId: {UserId}", response.UserId);
-                // Redirect back to Angular app with tokens in query params
-                var redirectUrl = $"http://localhost:4200/google-callback" +
+                var redirectUrl = $"{frontendUrl}/google-callback" +
                                   $"?userId={Uri.EscapeDataString(response.UserId)}" +
                                   $"{(!string.IsNullOrEmpty(response.FullName) ? $"&fullName={Uri.EscapeDataString(response.FullName)}" : "")}" +
                                   $"&email={Uri.EscapeDataString(response.Email)}" +
@@ -240,7 +240,7 @@ namespace SmartTravelPlaners.PL.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Google authentication callback failed. Error: {ErrorMessage}", ex.Message);
-                return Redirect("http://localhost:4200/auth/login?error=google_auth_failed");
+                return Redirect($"{frontendUrl}/login?error=google_auth_failed");
             }
         }
 

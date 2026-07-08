@@ -99,11 +99,25 @@ namespace SmartTravelPlaners.BLL.Features.Subscription.Services
         // Step 3 — Get Payment Key
         // =====================================================================
         public async Task<string> GetPaymentKeyAsync(
-            int orderId, int amountCents, string authToken)
+            int orderId, int amountCents, string authToken, UserProfile userProfile)
         {
             try
             {
                 _logger.LogInformation("Requesting payment key from Paymob. OrderId: {OrderId}, Amount: {Amount} cents", orderId, amountCents);
+
+                var firstName = "NA";
+                var lastName = "NA";
+                var email = "NA";
+                var phone = "NA";
+
+                if (userProfile.AspNetUser != null)
+                {
+                    var names = userProfile.AspNetUser.FullName?.Split(' ', 2);
+                    firstName = names != null && names.Length > 0 ? names[0] : "NA";
+                    lastName = names != null && names.Length > 1 ? names[1] : "NA";
+                    email = userProfile.AspNetUser.Email ?? "NA";
+                    phone = userProfile.AspNetUser.PhoneNumber ?? "NA";
+                }
 
                 var body = new
                 {
@@ -114,17 +128,17 @@ namespace SmartTravelPlaners.BLL.Features.Subscription.Services
                     billing_data = new
                     {
                         apartment = "NA",
-                        email = "NA",
+                        email = email,
                         floor = "NA",
-                        first_name = "NA",
+                        first_name = firstName,
                         street = "NA",
                         building = "NA",
-                        phone_number = "NA",
+                        phone_number = phone,
                         shipping_method = "NA",
                         postal_code = "NA",
                         city = "NA",
                         country = "NA",
-                        last_name = "NA",
+                        last_name = lastName,
                         state = "NA"
                     },
                     currency = "EGP",
@@ -156,11 +170,11 @@ namespace SmartTravelPlaners.BLL.Features.Subscription.Services
         // Combine: auth → order → payment key → iframe URL
         // =====================================================================
         public async Task<string> InitiatePaymentAsync(
-            string userId, Plan plan, Guid subscriptionId, string paymobOrderId)
+            UserProfile userProfile, Plan plan, Guid subscriptionId, string paymobOrderId)
         {
             try
             {
-                _logger.LogInformation("Initiating Paymob payment for SubscriptionId: {SubscriptionId}, UserId: {UserId}, Plan: {PlanName}", subscriptionId, userId, plan.Name);
+                _logger.LogInformation("Initiating Paymob payment for SubscriptionId: {SubscriptionId}, UserId: {UserId}, Plan: {PlanName}", subscriptionId, userProfile.AspNetUserId, plan.Name);
 
                 var amountCents = (int)(plan.PriceMonthly * 100);
 
@@ -168,7 +182,7 @@ namespace SmartTravelPlaners.BLL.Features.Subscription.Services
 
                 var orderId = await CreateOrderAsync(amountCents, authToken, paymobOrderId);
 
-                var paymentKey = await GetPaymentKeyAsync(orderId, amountCents, authToken);
+                var paymentKey = await GetPaymentKeyAsync(orderId, amountCents, authToken, userProfile);
 
                 var iframeUrl = $"https://accept.paymob.com/api/acceptance/iframes/{_settings.IframeId}?payment_token={paymentKey}";
                 _logger.LogInformation("Payment initiated successfully for SubscriptionId: {SubscriptionId}", subscriptionId);
@@ -177,7 +191,7 @@ namespace SmartTravelPlaners.BLL.Features.Subscription.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Payment initiation failed for SubscriptionId: {SubscriptionId}, UserId: {UserId}. Error: {ErrorMessage}", subscriptionId, userId, ex.Message);
+                _logger.LogError(ex, "Payment initiation failed for SubscriptionId: {SubscriptionId}, UserId: {UserId}. Error: {ErrorMessage}", subscriptionId, userProfile.AspNetUserId, ex.Message);
                 throw;
             }
         }

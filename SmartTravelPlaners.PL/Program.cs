@@ -1,7 +1,6 @@
-
-
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.SemanticKernel;
@@ -49,6 +48,7 @@ using SmartTravelPlaners.PL.Middlewares;
 using SmartTravelPlaners.BLL.Validation.Auth;
 using Serilog;
 using Serilog.Events;
+using System.IdentityModel.Tokens.Jwt;
 
 namespace SmartTravelPlaners.PL
 {
@@ -142,14 +142,29 @@ namespace SmartTravelPlaners.PL
                 options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
             // =======================================================
-            // 3. IDENTITY
+            // 3. IDENTITY & RATE LIMITING
             // =======================================================
+            
+            // Add Rate Limiting
+            builder.Services.AddRateLimiter(options =>
+            {
+                options.AddFixedWindowLimiter("AuthPolicy", limiterOptions =>
+                {
+                    limiterOptions.PermitLimit = 5; // 5 requests per window
+                    limiterOptions.Window = TimeSpan.FromMinutes(1);
+                    limiterOptions.QueueProcessingOrder = System.Threading.RateLimiting.QueueProcessingOrder.OldestFirst;
+                    limiterOptions.QueueLimit = 2;
+                });
+            });
+
             builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
             {
+                // Updated to match RegisterDtoValidator
                 options.Password.RequireDigit = true;
                 options.Password.RequiredLength = 6;
-                options.Password.RequireUppercase = false;
-                options.Password.RequireNonAlphanumeric = false;
+                options.Password.RequireUppercase = true;
+                options.Password.RequireLowercase = true;
+                options.Password.RequireNonAlphanumeric = true;
                 options.SignIn.RequireConfirmedEmail = true;
 
                 // Ensure 6-digit OTPs are generated instead of long tokens
@@ -318,6 +333,9 @@ namespace SmartTravelPlaners.PL
             builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
             builder.Services.AddScoped<IUsageLimitService, UsageLimitService>();
             builder.Services.AddHostedService<SubscriptionExpiryJob>();
+            
+            // Background Jobs
+            builder.Services.AddHostedService<SmartTravelPlaners.BLL.Features.Auth.Jobs.TokenCleanupJob>();
 
             // =======================================================
             // 11. BUILD APP
@@ -346,6 +364,20 @@ namespace SmartTravelPlaners.PL
 
             app.UseAuthentication();
             app.UseAuthorization();
+            app.UseRateLimiter();
+            
+            // =======================================================
+            // 13. SEED DATA (Roles)
+            // =======================================================
+            using (var scope = app.Services.CreateScope())
+            {
+                var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+                if (!roleManager.RoleExistsAsync("Admin").GetAwaiter().GetResult())
+                {
+                    roleManager.CreateAsync(new IdentityRole("Admin")).GetAwaiter().GetResult();
+                }
+            }
+
             app.MapControllers();
 
             try

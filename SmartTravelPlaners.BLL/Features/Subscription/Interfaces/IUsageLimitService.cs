@@ -16,5 +16,8 @@ namespace SmartTravelPlaners.BLL.Features.Subscription.Interfaces
 
         /// <summary>Returns current usage and limits for the user.</summary>
         Task<(int TripsUsed, int? TripsLimit, int MessagesUsed, int? MessagesLimit)> GetCurrentUsageAsync(string userId);
+
+        /// <summary>Resets the usage counters for the current month.</summary>
+        Task ResetUsageAsync(string userId);
     }
 }

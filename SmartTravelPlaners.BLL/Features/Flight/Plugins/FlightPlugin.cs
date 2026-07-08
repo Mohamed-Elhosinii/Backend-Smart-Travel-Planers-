@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Text.Json;
 using Microsoft.SemanticKernel;
 using SmartTravelPlaners.BLL.Features.Flight.DTOs;

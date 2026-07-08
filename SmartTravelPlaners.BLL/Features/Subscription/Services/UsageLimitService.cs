@@ -133,6 +133,25 @@ namespace SmartTravelPlaners.BLL.Features.Subscription.Services
             );
         }
 
+        public async Task ResetUsageAsync(string userId)
+        {
+            try
+            {
+                var counter = await GetOrCreateCounterAsync(userId);
+                counter.TripsUsed = 0;
+                counter.MessagesUsed = 0;
+                _unitOfWork.Repository<UsageCounter>().Update(counter);
+                await _unitOfWork.CompleteAsync();
+
+                _logger.LogInformation("Usage counters reset for UserId: {UserId}.", userId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to reset usage counters for UserId: {UserId}. Error: {ErrorMessage}", userId, ex.Message);
+                throw;
+            }
+        }
+
         // =================================================================
         // Private helpers
         // =================================================================
