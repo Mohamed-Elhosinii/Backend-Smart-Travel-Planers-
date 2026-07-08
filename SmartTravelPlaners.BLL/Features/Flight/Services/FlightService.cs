@@ -1,5 +1,6 @@
 
 using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using SmartTravelPlaners.BLL.Features.Flight.DTOs;
 using SmartTravelPlaners.BLL.Features.Flight.Interfaces;
@@ -12,11 +13,11 @@ namespace SmartTravelPlaners.BLL.Features.Flight.Services
         private readonly ILogger<FlightService> _logger;
 
         // AeroDataBox API credentials
-        private readonly string _aeroApiKey = "13e422650dmsh4bab4335bf19a98p13c492jsn69f4bac78d92";
+        private readonly string _aeroApiKey;
 
 
         // AirLabs API credentials
-        private readonly string _airlabsApiKey = "fbc05fb5-6fbb-4cb7-b06f-c0fe2a09c362";
+        private readonly string _airlabsApiKey;
 
         // IATA to ICAO airport code mapping
         private static readonly Dictionary<string, string> IataToIcao =
@@ -58,10 +59,12 @@ namespace SmartTravelPlaners.BLL.Features.Flight.Services
             { "بريطانيا", "LHR" }
         };
 
-        public FlightService(HttpClient httpClient, ILogger<FlightService> logger)
+        public FlightService(HttpClient httpClient, ILogger<FlightService> logger, IConfiguration configuration)
         {
             _httpClient = httpClient;
             _logger = logger;
+            _aeroApiKey = configuration["FlightApiSettings:AeroApiKey"] ?? throw new ArgumentNullException("AeroApiKey");
+            _airlabsApiKey = configuration["FlightApiSettings:AirLabsApiKey"] ?? throw new ArgumentNullException("AirLabsApiKey");
         }
 
         // ============================================================
