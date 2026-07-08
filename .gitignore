@@ -48,3 +48,4 @@ Desktop.ini
 
 #appsetting
 **/appsettings.json
+/SmartTravelPlaners.PL/appsettings.Development.json
