@@ -18,6 +18,7 @@ namespace SmartTravelPlaners.DAL.Entities
         public int NumTravelers { get; set; }
         public decimal BudgetTotal { get; set; }
         public decimal BudgetSpent { get; set; }
+        public decimal ConfirmedCost { get; set; }
         public TripStatus Status { get; set; } = TripStatus.Draft;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
