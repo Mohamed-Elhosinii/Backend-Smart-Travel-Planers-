@@ -34,6 +34,15 @@ namespace SmartTravelPlaners.BLL.Features.Hotel.Services
         public async Task<List<GoogleHotelDto>> GetAvailableHotelsAsync(
             string location, string checkIn, string checkOut, int adults = 2, int children = 0)
         {
+            if (!string.IsNullOrEmpty(location))
+            {
+                location = location.Trim();
+                if (location.Contains(","))
+                {
+                    location = location.Split(',')[0].Trim();
+                }
+            }
+
             var searchUrl = $"v1/google_hotels/search?location={Uri.EscapeDataString(location)}" +
                             $"&check_in={checkIn}&check_out={checkOut}" +
                             $"&adults={adults}&children={children}&currency=USD";

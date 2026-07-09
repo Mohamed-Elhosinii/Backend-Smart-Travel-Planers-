@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
@@ -31,6 +31,15 @@ namespace SmartTravelPlaners.BLL.Features.Weather.Services
         {
             try
             {
+                if (!string.IsNullOrEmpty(cityName))
+                {
+                    cityName = cityName.Trim();
+                    if (cityName.Contains(","))
+                    {
+                        cityName = cityName.Split(',')[0].Trim();
+                    }
+                }
+
                 _logger.LogInformation("Fetching weather forecast. City: {CityName}, StartDate: {StartDate}, EndDate: {EndDate}", 
                     cityName, startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"));
 

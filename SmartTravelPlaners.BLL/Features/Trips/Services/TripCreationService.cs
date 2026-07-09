@@ -164,6 +164,17 @@ namespace SmartTravelPlaners.BLL.Features.Trips.Services
                 }).ToList()
             };
 
+            if (data.IsRoundTrip.HasValue)
+            {
+                trip.Preferences.Add(new TripPreference
+                {
+                    Id = Guid.NewGuid(),
+                    TripId = trip.Id,
+                    Category = "FlightType",
+                    Value = data.IsRoundTrip.Value ? "RoundTrip" : "OneWay"
+                });
+            }
+
             await _unitOfWork.Trips.AddAsync(trip);
             await _unitOfWork.CompleteAsync();
 
