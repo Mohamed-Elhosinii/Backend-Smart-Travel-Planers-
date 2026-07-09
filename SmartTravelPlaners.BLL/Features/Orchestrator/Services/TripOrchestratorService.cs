@@ -115,6 +115,28 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                     + (flightDto != null ? flightBudget : 0)
                     + dayPlans.Sum(d => d.Activities.Sum(a => a.EstimatedCost));
 
+                // ConfirmedCost = only actual confirmed prices (hotel only for now)
+                var confirmedCost = (decimal)(hotelDto?.Price.PricePerNight ?? 0) * Math.Max(numberOfNights, 1);
+
+                // Validate budget and generate warnings
+                var budgetWarnings = BudgetValidator.ValidateBudget(
+                    trip.BudgetTotal,
+                    trip.BudgetSpent,
+                    confirmedCost,
+                    estimatedTotal
+                );
+
+                // Add hotel-specific warning if needed
+                var hotelWarning = BudgetValidator.ValidateHotelCost(
+                    confirmedCost,
+                    trip.BudgetTotal,
+                    hasOrigin
+                );
+                if (hotelWarning != null)
+                {
+                    budgetWarnings.Add(hotelWarning);
+                }
+
                 var plan = new TripPlanDto
                 {
                     TripId = trip.Id,
@@ -122,11 +144,14 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                     StartDate = trip.StartDate,
                     EndDate = trip.EndDate,
                     BudgetTotal = trip.BudgetTotal,
+                    BudgetSpent = trip.BudgetSpent,
+                    ConfirmedCost = confirmedCost,
                     EstimatedTotalCost = estimatedTotal,
                     Hotel = hotelDto is null ? null : MapHotel(hotelDto),
                     Flight = flightDto is null ? null : MapFlight(flightDto, flightBudget),
                     Days = dayPlans,
                     Weather = weather,
+                    BudgetWarnings = budgetWarnings,
                     Summary = BuildSummary(trip, hotelDto, flightDto, dayPlans)
                 };
 
@@ -425,8 +450,14 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 await _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Flight>().AddAsync(flightEntity);
             }
 
+            decimal totalActivitiesCost = 0;
+
             foreach (var dayPlan in dayPlans)
             {
+                // BudgetSpent for the day = sum of all activity estimated costs in that day
+                var daySpent = dayPlan.Activities.Sum(a => a.EstimatedCost);
+                totalActivitiesCost += daySpent;
+
                 var tripDay = new TripDay
                 {
                     Id = Guid.NewGuid(),
@@ -434,7 +465,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                     DayNumber = dayPlan.DayNumber,
                     Date = dayPlan.Date,
                     BudgetAllocated = dayPlan.BudgetAllocated,
-                    BudgetSpent = 0
+                    BudgetSpent = daySpent
                 };
 
                 foreach (var activity in dayPlan.Activities)
@@ -452,7 +483,6 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                         EstimatedCost = activity.EstimatedCost,
                         Status = ActivityStatus.Suggested,
                         PlaceId = activity.PlaceId,
-
                     });
                 }
 
@@ -475,8 +505,23 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 });
             }
 
+            // Trip.BudgetSpent = hotel cost + flight cost + all activities cost
+            var numberOfNights = Math.Max(trip.EndDate.DayNumber - trip.StartDate.DayNumber, 1);
+            var hotelCost   = hotel  is not null ? (decimal)(hotel.Price.PricePerNight ?? 0) * numberOfNights : 0;
+            var flightCost  = flight is not null ? flightBudget : 0;
+            trip.BudgetSpent = hotelCost + flightCost + totalActivitiesCost;
+            
+            // Trip.ConfirmedCost = hotel cost only (actual confirmed price)
+            trip.ConfirmedCost = hotelCost;
+            
             trip.Status = TripStatus.Confirmed;
+            _unitOfWork.Trips.Update(trip);
+
             await _unitOfWork.CompleteAsync();
+
+            _logger.LogInformation(
+                "BudgetSpent persisted. TripId: {TripId}, Hotel: {Hotel}, Flight: {Flight}, Activities: {Activities}, Total: {Total}",
+                trip.Id, hotelCost, flightCost, totalActivitiesCost, trip.BudgetSpent);
         }
 
         // Deletes any previously-generated hotel/flight/day/activity rows for this trip
@@ -657,6 +702,29 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
 
             await _unitOfWork.CompleteAsync();
 
+            // Recalculate Trip.BudgetSpent after hotel change
+            var updatedTrip = await _unitOfWork.Trips.GetTripWithDetailsAsync(tripId)
+                ?? throw new Exception($"Trip {tripId} not found");
+            var nights = Math.Max(updatedTrip.EndDate.DayNumber - updatedTrip.StartDate.DayNumber, 1);
+            var newHotelEntity = updatedTrip.Hotels.OrderByDescending(h => h.Id).FirstOrDefault();
+            var flightEntity   = updatedTrip.Flights.FirstOrDefault();
+            var allActivitiesCost = updatedTrip.Days.SelectMany(d => d.Activities).Sum(a => a.EstimatedCost);
+
+            updatedTrip.BudgetSpent =
+                (newHotelEntity?.PricePerNight ?? 0) * nights
+                + (flightEntity?.Price ?? 0)
+                + allActivitiesCost;
+
+            // Recalculate Trip.ConfirmedCost after hotel change (hotel only)
+            updatedTrip.ConfirmedCost = (newHotelEntity?.PricePerNight ?? 0) * nights;
+
+            _unitOfWork.Trips.Update(updatedTrip);
+            await _unitOfWork.CompleteAsync();
+
+            _logger.LogInformation(
+                "BudgetSpent recalculated after hotel regeneration. TripId: {TripId}, Total: {Total}",
+                tripId, updatedTrip.BudgetSpent);
+
             return MapHotel(nextHotel);
         }
 
@@ -680,6 +748,14 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 : BudgetAllocator.WithoutFlight(trip.BudgetTotal).Item2;
 
             var dailyBudget = activitiesBudget / numberOfDays;
+
+            // Sync BudgetAllocated on this day in case BudgetTotal changed since plan was built
+            if (tripDay.BudgetAllocated != dailyBudget)
+            {
+                tripDay.BudgetAllocated = dailyBudget;
+                _unitOfWork.Repository<TripDay>().Update(tripDay);
+                await _unitOfWork.CompleteAsync();
+            }
 
            
             var oldActivities = await _unitOfWork.Repository<Activity>()
@@ -760,6 +836,32 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
 
             await _unitOfWork.CompleteAsync();
 
+            // Update TripDay.BudgetSpent for this day
+            var daySpent = newActivities.Sum(a => a.EstimatedCost);
+            tripDay.BudgetSpent = daySpent;
+            _unitOfWork.Repository<TripDay>().Update(tripDay);
+            await _unitOfWork.CompleteAsync();
+
+            // Recalculate Trip.BudgetSpent across all days + hotel + flight
+            var updatedTrip = await _unitOfWork.Trips.GetTripWithDetailsAsync(tripId)
+                ?? throw new Exception($"Trip {tripId} not found");
+            var nights = Math.Max(updatedTrip.EndDate.DayNumber - updatedTrip.StartDate.DayNumber, 1);
+            var hotelEntity  = updatedTrip.Hotels.OrderByDescending(h => h.Id).FirstOrDefault();
+            var flightEntity = updatedTrip.Flights.FirstOrDefault();
+            var allActivitiesCost = updatedTrip.Days.SelectMany(d => d.Activities).Sum(a => a.EstimatedCost);
+
+            updatedTrip.BudgetSpent =
+                (hotelEntity?.PricePerNight ?? 0) * nights
+                + (flightEntity?.Price ?? 0)
+                + allActivitiesCost;
+
+            _unitOfWork.Trips.Update(updatedTrip);
+            await _unitOfWork.CompleteAsync();
+
+            _logger.LogInformation(
+                "BudgetSpent recalculated after day activities regeneration. TripId: {TripId}, DayNumber: {DayNumber}, DaySpent: {DaySpent}, TripTotal: {TripTotal}",
+                tripId, dayNumber, daySpent, updatedTrip.BudgetSpent);
+
             return newActivities;
         }
         public async Task SyncDayPlansAsync(Guid tripId, string? changedField = null)
@@ -826,7 +928,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                         DayNumber = dayNumber,
                         Date = date,
                         BudgetAllocated = dailyBudget,
-                        BudgetSpent = 0
+                        BudgetSpent = newActivities.Sum(a => a.EstimatedCost)
                     };
 
                     foreach (var activity in newActivities)
@@ -873,8 +975,28 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                     _unitOfWork.Repository<TripDay>().Delete(day);
                 }
                 await _unitOfWork.CompleteAsync();
+
+                // Recalculate Trip.BudgetSpent after days removed
+                var tripAfterRemove = await _unitOfWork.Trips.GetTripWithDetailsAsync(tripId)
+                    ?? throw new Exception($"Trip {tripId} not found");
+                var nightsAfterRemove = Math.Max(tripAfterRemove.EndDate.DayNumber - tripAfterRemove.StartDate.DayNumber, 1);
+                var hotelAfterRemove  = tripAfterRemove.Hotels.OrderByDescending(h => h.Id).FirstOrDefault();
+                var flightAfterRemove = tripAfterRemove.Flights.FirstOrDefault();
+                var activitiesAfterRemove = tripAfterRemove.Days.SelectMany(d => d.Activities).Sum(a => a.EstimatedCost);
+
+                tripAfterRemove.BudgetSpent =
+                    (hotelAfterRemove?.PricePerNight ?? 0) * nightsAfterRemove
+                    + (flightAfterRemove?.Price ?? 0)
+                    + activitiesAfterRemove;
+
+                _unitOfWork.Trips.Update(tripAfterRemove);
+                await _unitOfWork.CompleteAsync();
+
+                _logger.LogInformation(
+                    "BudgetSpent recalculated after day removal. TripId: {TripId}, Total: {Total}",
+                    tripId, tripAfterRemove.BudgetSpent);
             }
-            }
+        }
         public async Task<TripFlightDto?> RegenerateFlightAsync(Guid tripId)
         {
             var trip = await _unitOfWork.Trips.GetTripWithDetailsAsync(tripId)
@@ -945,6 +1067,25 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
 
             await _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Flight>().AddAsync(flightEntity);
             await _unitOfWork.CompleteAsync();
+
+            // Recalculate Trip.BudgetSpent after flight change
+            var updatedTrip = await _unitOfWork.Trips.GetTripWithDetailsAsync(tripId)
+                ?? throw new Exception($"Trip {tripId} not found");
+            var nights = Math.Max(updatedTrip.EndDate.DayNumber - updatedTrip.StartDate.DayNumber, 1);
+            var hotelEntity       = updatedTrip.Hotels.OrderByDescending(h => h.Id).FirstOrDefault();
+            var allActivitiesCost = updatedTrip.Days.SelectMany(d => d.Activities).Sum(a => a.EstimatedCost);
+
+            updatedTrip.BudgetSpent =
+                (hotelEntity?.PricePerNight ?? 0) * nights
+                + flightBudget
+                + allActivitiesCost;
+
+            _unitOfWork.Trips.Update(updatedTrip);
+            await _unitOfWork.CompleteAsync();
+
+            _logger.LogInformation(
+                "BudgetSpent recalculated after flight regeneration. TripId: {TripId}, Total: {Total}",
+                tripId, updatedTrip.BudgetSpent);
 
             return MapFlight(nextFlight, flightBudget);
         }
@@ -1017,6 +1158,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 DayNumber = d.DayNumber,
                 Date = d.Date,
                 BudgetAllocated = d.BudgetAllocated,
+                BudgetSpent = d.BudgetSpent,
                 Activities = d.Activities.Select(a => new ActivityPlanDto
                 {
                     Name = a.Name,
@@ -1036,6 +1178,31 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
      + (flightEntity?.Price ?? 0)
      + dayDtos.Sum(d => d.Activities.Sum(a => a.EstimatedCost));
 
+            // ConfirmedCost = only actual confirmed prices (hotel only for now)
+            var confirmedCost = (hotelEntity?.PricePerNight ?? 0) * numberOfNights;
+
+            // Validate budget and generate warnings
+            var budgetWarnings = BudgetValidator.ValidateBudget(
+                trip.BudgetTotal,
+                trip.BudgetSpent,
+                confirmedCost,
+                estimatedTotal
+            );
+
+            // Add hotel-specific warning if needed
+            if (hotelEntity != null)
+            {
+                var hotelWarning = BudgetValidator.ValidateHotelCost(
+                    confirmedCost,
+                    trip.BudgetTotal,
+                    !string.IsNullOrWhiteSpace(trip.OriginCity)
+                );
+                if (hotelWarning != null)
+                {
+                    budgetWarnings.Add(hotelWarning);
+                }
+            }
+
             return new TripPlanDto
             {
                 TripId = trip.Id,
@@ -1043,6 +1210,8 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 StartDate = trip.StartDate,
                 EndDate = trip.EndDate,
                 BudgetTotal = trip.BudgetTotal,
+                BudgetSpent = trip.BudgetSpent,
+                ConfirmedCost = confirmedCost,
                 EstimatedTotalCost = estimatedTotal,
                 Hotel = hotelEntity is null ? null : new TripHotelDto
                 {
@@ -1059,10 +1228,12 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                     DepartureAirport = flightEntity.Origin,
                     ArrivalAirport = flightEntity.Destination,
                     DepartureTime = flightEntity.DepartureTime.ToString("o"),
-                    ArrivalTime = flightEntity.ArrivalTime.ToString("o")
+                    ArrivalTime = flightEntity.ArrivalTime.ToString("o"),
+                    EstimatedPrice = flightEntity.Price
                 },
                 Days = dayDtos,
                 Weather = weatherDays,
+                BudgetWarnings = budgetWarnings,
                 Summary = $"Trip to {trip.Destination} ({trip.StartDate} - {trip.EndDate}), " +
                           $"{(hotelEntity != null ? $"staying at {hotelEntity.Name}" : "no hotel selected")}" +
                           $"{(flightEntity != null ? $" with a flight via {flightEntity.Airline}" : "")}, " +

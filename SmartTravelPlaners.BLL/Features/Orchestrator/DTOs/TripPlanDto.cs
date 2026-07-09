@@ -11,6 +11,8 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.DTOs
         public DateOnly StartDate { get; set; }
         public DateOnly EndDate { get; set; }
         public decimal BudgetTotal { get; set; }
+        public decimal BudgetSpent { get; set; }
+        public decimal ConfirmedCost { get; set; }
         public decimal EstimatedTotalCost { get; set; }
 
         public TripHotelDto? Hotel { get; set; }
@@ -19,6 +21,9 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.DTOs
 
         /// <summary>Daily weather forecast for the destination across the trip window.</summary>
         public List<DayWeatherDto> Weather { get; set; } = new();
+
+        /// <summary>Budget warnings and validation messages</summary>
+        public List<BudgetWarning> BudgetWarnings { get; set; } = new();
 
         public string Summary { get; set; } = string.Empty;
     }
