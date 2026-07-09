@@ -181,11 +181,15 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
         {
             try
             {
+                var tripTypePref = trip.Preferences?.FirstOrDefault(p => p.Category == "FlightType")?.Value ?? "OneWay";
+                var returnDate = tripTypePref.Equals("RoundTrip", StringComparison.OrdinalIgnoreCase) ? trip.EndDate.ToString("yyyy-MM-dd") : null;
+
                 var json = await _flightPlugin.SearchFlightsAsync(
                     departureCity: trip.OriginCity ?? "",
                     arrivalCity: trip.Destination,
                     departureDate: departureDate,
-                    tripType: "OneWay");
+                    tripType: tripTypePref,
+                    returnDate: returnDate);
 
                 var result = TryDeserialize<FlightSearchResult>(json);
 
@@ -229,7 +233,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                     Conditions = d.Conditions,
                     IconUrl = d.IconUrl,
                     PrecipProb = d.PrecipProb
-                }).ToList();
+                }).OrderBy(w => w.Date).ToList();
 
                 return (weatherList, response.Latitude, response.Longitude);
             }
@@ -949,6 +953,9 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
             var currentFlight = trip.Flights?.FirstOrDefault();
             var departureDate = trip.StartDate.ToString("yyyy-MM-dd");
 
+            var tripTypePref = trip.Preferences?.FirstOrDefault(p => p.Category == "FlightType")?.Value ?? "OneWay";
+            var returnDate = tripTypePref.Equals("RoundTrip", StringComparison.OrdinalIgnoreCase) ? trip.EndDate.ToString("yyyy-MM-dd") : null;
+
             List<FlightDto> candidates;
             try
             {
@@ -956,7 +963,8 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                     departureCity: trip.OriginCity,
                     arrivalCity: trip.Destination,
                     departureDate: departureDate,
-                    tripType: "OneWay");
+                    tripType: tripTypePref,
+                    returnDate: returnDate);
 
                 var result = TryDeserialize<FlightSearchResult>(json);
                 candidates = result?.OutboundFlights ?? new();
@@ -1064,6 +1072,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                     Conditions = w.Conditions,
                     IconUrl = w.IconUrl
                 })
+                .OrderBy(w => w.Date)
                 .ToList();
 
             var numberOfNights = Math.Max(trip.EndDate.DayNumber - trip.StartDate.DayNumber, 1);

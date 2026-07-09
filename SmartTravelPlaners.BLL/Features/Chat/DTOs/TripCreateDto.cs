@@ -32,6 +32,8 @@ namespace SmartTravelPlaners.BLL.Features.Chat.DTOs
 
         public decimal BudgetTotal { get; set; }
 
+        public bool? IsRoundTrip { get; set; }
+
         public List<string> Preferences { get; set; } = new();
 
         /// <summary>Cross-field rules: valid dates, EndDate ≥ StartDate, BudgetTotal &gt; 0.</summary>

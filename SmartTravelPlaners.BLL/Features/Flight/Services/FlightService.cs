@@ -80,7 +80,13 @@ namespace SmartTravelPlaners.BLL.Features.Flight.Services
                     throw new Exception("City name cannot be empty");
                 }
 
-                if (CountryToCityIataFallback.TryGetValue(cityName.Trim(), out var fallbackIata))
+                cityName = cityName.Trim();
+                if (cityName.Contains(","))
+                {
+                    cityName = cityName.Split(',')[0].Trim();
+                }
+
+                if (CountryToCityIataFallback.TryGetValue(cityName, out var fallbackIata))
                 {
                     _logger.LogInformation("IATA code resolved from fallback map. City: {CityName}, IATA: {IATA}", cityName, fallbackIata);
                     return fallbackIata;
