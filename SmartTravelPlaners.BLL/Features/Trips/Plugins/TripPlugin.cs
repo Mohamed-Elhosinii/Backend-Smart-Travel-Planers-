@@ -308,6 +308,42 @@ namespace SmartTravelPlaners.BLL.Features.Trips.Plugins
             return Task.FromResult(JsonSerializer.Serialize(new { success = true, message = "جاري البحث عن رحلة طيران بديلة... ثواني وهنعرضهالك." }));
         }
 
+        [KernelFunction("set_specific_flight")]
+        [Description("Set a specific flight for the trip (either outbound or return) using exact details.")]
+        public Task<string> SetSpecificFlightAsync(
+            [Description("The airline name")] string airline,
+            [Description("The flight number")] string flightNumber,
+            [Description("The departure airport code or city")] string origin,
+            [Description("The arrival airport code or city")] string destination,
+            [Description("The departure time (ISO format)")] string departureTime,
+            [Description("The arrival time (ISO format)")] string arrivalTime,
+            [Description("True if this is the return flight, False if it is the outbound flight")] bool isReturnFlight)
+        {
+            if (TripId == null)
+            {
+                return Task.FromResult(JsonSerializer.Serialize(new { error = "مفيش رحلة موجودة عشان نغيرلها الطيران. نبدأ نعمل رحلة جديدة؟" }));
+            }
+
+            var tripId = TripId.Value;
+            IsPlanUpdating = true; // Signal ChatService
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using var scope = _serviceProvider.CreateScope();
+                    var orchestrator = scope.ServiceProvider.GetRequiredService<ITripOrchestratorService>();
+                    await orchestrator.SetSpecificFlightAsync(tripId, isReturnFlight, airline, flightNumber, origin, destination, departureTime, arrivalTime);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"SetSpecificFlightAsync failed: {ex.Message}");
+                }
+            });
+
+            return Task.FromResult(JsonSerializer.Serialize(new { success = true, message = $"تم إضافة الرحلة {airline} ({flightNumber}) بنجاح... ثواني وهنعرضهالك." }));
+        }
+
         [KernelFunction("show_trip")]
         [Description("Get the full details of the current active trip plan.")]
         public Task<string> ShowTripAsync()

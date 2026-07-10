@@ -1139,7 +1139,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 await _unitOfWork.CompleteAsync();
             }
             }
-        public async Task<TripFlightDto?> RegenerateFlightAsync(Guid tripId)
+        public async Task<List<TripFlightDto>> RegenerateFlightAsync(Guid tripId)
         {
             var trip = await _unitOfWork.Trips.GetTripWithDetailsAsync(tripId)
                 ?? throw new Exception($"Trip {tripId} not found");
@@ -1151,7 +1151,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 foreach (var f in oldFlights)
                     _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Flight>().Delete(f);
                 await _unitOfWork.CompleteAsync();
-                return null;
+                return new List<TripFlightDto>();
             }
 
             var currentFlight = trip.Flights?.FirstOrDefault();
@@ -1160,7 +1160,8 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
             var tripTypePref = trip.Preferences?.FirstOrDefault(p => p.Category == "FlightType")?.Value ?? "OneWay";
             var returnDate = tripTypePref.Equals("RoundTrip", StringComparison.OrdinalIgnoreCase) ? trip.EndDate.ToString("yyyy-MM-dd") : null;
 
-            List<FlightDto> candidates;
+            List<FlightDto> outboundCandidates;
+            List<FlightDto>? returnCandidates = null;
             try
             {
                 var json = await _flightPlugin.SearchFlightsAsync(
@@ -1171,22 +1172,22 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                     returnDate: returnDate);
 
                 var result = TryDeserialize<FlightSearchResult>(json);
-                candidates = result?.OutboundFlights ?? new();
+                outboundCandidates = result?.OutboundFlights ?? new();
+                returnCandidates = result?.ReturnFlights;
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"RegenerateFlightAsync search failed: {ex.Message}");
-                return null;
+                return new List<TripFlightDto>();
             }
 
-            var filtered = candidates
+            var filtered = outboundCandidates
                 .Where(f => currentFlight == null ||
                             !string.Equals(f.FlightNumber, currentFlight.FlightNumber, StringComparison.OrdinalIgnoreCase))
                 .ToList();
 
             var flightBudget = BudgetAllocator.FlightBudget(trip.BudgetTotal);
-            var nextFlight = filtered.FirstOrDefault() ?? candidates.FirstOrDefault();
-
+            var nextFlight = filtered.FirstOrDefault() ?? outboundCandidates.FirstOrDefault();
             
             var existingFlights = await _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Flight>()
                 .FindAsync(f => f.TripId == tripId);
@@ -1194,30 +1195,185 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Flight>().Delete(f);
             await _unitOfWork.CompleteAsync();
 
-            if (nextFlight is null)
-                return null;
+            var generatedFlights = new List<TripFlightDto>();
 
-            var flightEntity = new SmartTravelPlaners.DAL.Entities.Flight
+            if (nextFlight is not null)
+            {
+                var flightEntity = new SmartTravelPlaners.DAL.Entities.Flight
+                {
+                    Id = Guid.NewGuid(),
+                    TripId = trip.Id,
+                    Airline = nextFlight.AirlineName,
+                    FlightNumber = nextFlight.FlightNumber,
+                    Origin = nextFlight.DepartureAirport,
+                    Destination = nextFlight.ArrivalAirport,
+                    DepartureTime = ParseDateTime(nextFlight.DepartureTime),
+                    ArrivalTime = ParseDateTime(nextFlight.ArrivalTime),
+                    AirlineCode = nextFlight.AirlineCode,
+                    DepartureTerminal = nextFlight.DepartureTerminal,
+                    ArrivalTerminal = nextFlight.ArrivalTerminal,
+                    Price = flightBudget,
+                    Status = BookingStatus.Suggested
+                };
+
+                await _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Flight>().AddAsync(flightEntity);
+                generatedFlights.Add(MapFlight(nextFlight, flightBudget));
+
+                if (returnCandidates != null && returnCandidates.Any())
+                {
+                    var nextReturnFlight = returnCandidates.FirstOrDefault();
+                    if (nextReturnFlight != null)
+                    {
+                        var returnFlightEntity = new SmartTravelPlaners.DAL.Entities.Flight
+                        {
+                            Id = Guid.NewGuid(),
+                            TripId = trip.Id,
+                            Airline = nextReturnFlight.AirlineName,
+                            FlightNumber = nextReturnFlight.FlightNumber,
+                            Origin = nextReturnFlight.DepartureAirport,
+                            Destination = nextReturnFlight.ArrivalAirport,
+                            DepartureTime = ParseDateTime(nextReturnFlight.DepartureTime),
+                            ArrivalTime = ParseDateTime(nextReturnFlight.ArrivalTime),
+                            AirlineCode = nextReturnFlight.AirlineCode,
+                            DepartureTerminal = nextReturnFlight.DepartureTerminal,
+                            ArrivalTerminal = nextReturnFlight.ArrivalTerminal,
+                            Price = flightBudget,
+                            Status = BookingStatus.Suggested
+                        };
+                        await _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Flight>().AddAsync(returnFlightEntity);
+                        generatedFlights.Add(MapFlight(nextReturnFlight, flightBudget));
+                    }
+                }
+
+                await _unitOfWork.CompleteAsync();
+            }
+
+            return generatedFlights;
+        }
+
+        public async Task<List<TripFlightDto>> SetSpecificFlightAsync(Guid tripId, bool isReturnFlight, string airline, string flightNumber, string origin, string destination, string departureTime, string arrivalTime)
+        {
+            var trip = await _unitOfWork.Trips.GetTripWithDetailsAsync(tripId)
+                 ?? throw new Exception($"Trip {tripId} not found");
+
+            if (isReturnFlight)
+            {
+                var pref = trip.Preferences.FirstOrDefault(p => p.Category == "FlightType");
+                if (pref == null)
+                {
+                    trip.Preferences.Add(new TripPreference { TripId = tripId, Category = "FlightType", Value = "RoundTrip" });
+                }
+                else
+                {
+                    pref.Value = "RoundTrip";
+                }
+            }
+
+            var flightEntities = (await _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Flight>()
+                .FindAsync(f => f.TripId == tripId))
+                .OrderBy(f => f.DepartureTime)
+                .ToList();
+
+            SmartTravelPlaners.DAL.Entities.Flight? targetFlight = null;
+            if (isReturnFlight)
+            {
+                if (flightEntities.Count > 1)
+                {
+                    targetFlight = flightEntities.Last();
+                }
+            }
+            else
+            {
+                if (flightEntities.Count > 0)
+                {
+                    targetFlight = flightEntities.First();
+                }
+            }
+
+            if (targetFlight != null)
+            {
+                _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Flight>().Delete(targetFlight);
+            }
+
+            var flightBudget = BudgetAllocator.FlightBudget(trip.BudgetTotal);
+
+            // Try to find the exact flight from the API to get full details (like Terminal)
+            string depTerminal = "";
+            string arrTerminal = "";
+            string airCode = flightNumber.Length >= 2 ? flightNumber.Substring(0, 2).ToUpper() : "";
+
+            try
+            {
+                var json = await _flightPlugin.SearchFlightsAsync(
+                    departureCity: trip.OriginCity ?? origin,
+                    arrivalCity: trip.Destination ?? destination,
+                    departureDate: trip.StartDate.ToString("yyyy-MM-dd"),
+                    tripType: "RoundTrip",
+                    returnDate: trip.EndDate.ToString("yyyy-MM-dd"));
+
+                var searchResult = TryDeserialize<FlightSearchResult>(json);
+                var candidates = isReturnFlight ? searchResult?.ReturnFlights : searchResult?.OutboundFlights;
+                var matchedFlight = candidates?.FirstOrDefault(f => string.Equals(f.FlightNumber, flightNumber, StringComparison.OrdinalIgnoreCase));
+
+                if (matchedFlight != null)
+                {
+                    depTerminal = matchedFlight.DepartureTerminal ?? "";
+                    arrTerminal = matchedFlight.ArrivalTerminal ?? "";
+                    if (!string.IsNullOrEmpty(matchedFlight.AirlineCode))
+                        airCode = matchedFlight.AirlineCode;
+                }
+            }
+            catch
+            {
+                // Ignore API failure and fallback to provided details
+            }
+
+            var newFlight = new SmartTravelPlaners.DAL.Entities.Flight
             {
                 Id = Guid.NewGuid(),
                 TripId = trip.Id,
-                Airline = nextFlight.AirlineName,
-                FlightNumber = nextFlight.FlightNumber,
-                Origin = nextFlight.DepartureAirport,
-                Destination = nextFlight.ArrivalAirport,
-                DepartureTime = ParseDateTime(nextFlight.DepartureTime),
-                ArrivalTime = ParseDateTime(nextFlight.ArrivalTime),
-                AirlineCode = nextFlight.AirlineCode,
-                DepartureTerminal = nextFlight.DepartureTerminal,
-                ArrivalTerminal = nextFlight.ArrivalTerminal,
+                Airline = airline,
+                FlightNumber = flightNumber,
+                Origin = origin,
+                Destination = destination,
+                DepartureTime = ParseDateTime(departureTime),
+                ArrivalTime = ParseDateTime(arrivalTime),
+                AirlineCode = airCode,
+                DepartureTerminal = depTerminal,
+                ArrivalTerminal = arrTerminal,
                 Price = flightBudget,
                 Status = BookingStatus.Suggested
             };
 
-            await _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Flight>().AddAsync(flightEntity);
+            await _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Flight>().AddAsync(newFlight);
             await _unitOfWork.CompleteAsync();
 
-            return MapFlight(nextFlight, flightBudget);
+            var currentFlights = (await _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Flight>()
+                .FindAsync(f => f.TripId == tripId))
+                .OrderBy(f => f.DepartureTime)
+                .ToList();
+
+            var generatedFlights = new List<TripFlightDto>();
+            foreach (var f in currentFlights)
+            {
+                var dto = new TripFlightDto
+                {
+                    AirlineName = f.Airline ?? "",
+                    FlightNumber = f.FlightNumber ?? "",
+                    DepartureAirport = f.Origin,
+                    ArrivalAirport = f.Destination,
+                    DepartureTime = f.DepartureTime.ToString("o"),
+                    ArrivalTime = f.ArrivalTime.ToString("o"),
+                    AirlineCode = f.AirlineCode ?? "",
+                    DepartureTerminal = f.DepartureTerminal ?? "",
+                    ArrivalTerminal = f.ArrivalTerminal ?? "",
+                    FlightDuration = $"{(int)(f.ArrivalTime - f.DepartureTime).TotalHours}h {(f.ArrivalTime - f.DepartureTime).Minutes}m",
+                    EstimatedPrice = f.Price
+                };
+                generatedFlights.Add(dto);
+            }
+
+            return generatedFlights;
         }
         public async Task RegenerateWeatherAsync(Guid tripId)
         {
@@ -1259,8 +1415,13 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
             var hotelEntity = (await _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Hotel>()
                 .FindAsync(h => h.TripId == tripId)).FirstOrDefault();
 
-            var flightEntity = (await _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Flight>()
-                .FindAsync(f => f.TripId == tripId)).FirstOrDefault();
+            var flightEntities = (await _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Flight>()
+                .FindAsync(f => f.TripId == tripId))
+                .OrderBy(f => f.DepartureTime)
+                .ToList();
+
+            var flightEntity = flightEntities.FirstOrDefault();
+            var returnFlightEntity = flightEntities.Skip(1).FirstOrDefault();
 
             var tripDays = (await _unitOfWork.Repository<TripDay>()
                 .FindAsync(d => d.TripId == tripId))
@@ -1364,6 +1525,20 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                     ArrivalTerminal = flightEntity.ArrivalTerminal ?? string.Empty,
                     FlightDuration = $"{(int)(flightEntity.ArrivalTime - flightEntity.DepartureTime).TotalHours}h {(flightEntity.ArrivalTime - flightEntity.DepartureTime).Minutes}m",
                     EstimatedPrice = flightEntity.Price
+                },
+                ReturnFlight = returnFlightEntity is null ? null : new TripFlightDto
+                {
+                    AirlineName = returnFlightEntity.Airline ?? string.Empty,
+                    FlightNumber = returnFlightEntity.FlightNumber ?? string.Empty,
+                    DepartureAirport = returnFlightEntity.Origin,
+                    ArrivalAirport = returnFlightEntity.Destination,
+                    DepartureTime = returnFlightEntity.DepartureTime.ToString("o"),
+                    ArrivalTime = returnFlightEntity.ArrivalTime.ToString("o"),
+                    AirlineCode = returnFlightEntity.AirlineCode ?? string.Empty,
+                    DepartureTerminal = returnFlightEntity.DepartureTerminal ?? string.Empty,
+                    ArrivalTerminal = returnFlightEntity.ArrivalTerminal ?? string.Empty,
+                    FlightDuration = $"{(int)(returnFlightEntity.ArrivalTime - returnFlightEntity.DepartureTime).TotalHours}h {(returnFlightEntity.ArrivalTime - returnFlightEntity.DepartureTime).Minutes}m",
+                    EstimatedPrice = returnFlightEntity.Price
                 },
                 Days = dayDtos,
                 Weather = weatherDays,

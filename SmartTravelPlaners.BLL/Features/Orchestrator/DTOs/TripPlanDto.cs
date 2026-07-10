@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -17,6 +17,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.DTOs
 
         public TripHotelDto? Hotel { get; set; }
         public TripFlightDto? Flight { get; set; }
+        public TripFlightDto? ReturnFlight { get; set; }
         public List<DayPlanDto> Days { get; set; } = new();
 
         /// <summary>Daily weather forecast for the destination across the trip window.</summary>
