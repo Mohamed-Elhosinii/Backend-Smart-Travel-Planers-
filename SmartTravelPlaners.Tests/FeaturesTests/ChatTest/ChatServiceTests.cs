@@ -63,9 +63,7 @@ namespace SmartTravelPlaners.Tests.Features.Chat
 
             var weatherPlugin = new SmartTravelPlaners.BLL.Features.Weather.Plugins.WeatherPlugin(new Mock<SmartTravelPlaners.BLL.Features.Weather.Interfaces.IWeatherApiService>().Object);
             var hotelPlugin = new SmartTravelPlaners.BLL.Features.Hotel.Plugins.HotelPlugin(
-                new Mock<SmartTravelPlaners.BLL.Features.Hotel.Interfaces.IHotelApiService>().Object,
-                new Mock<SmartTravelPlaners.BLL.Features.Hotel.Interfaces.IPlaceResolverService>().Object,
-                new Mock<SmartTravelPlaners.BLL.Features.Hotel.Interfaces.IHotelSearchService>().Object);
+                new Mock<SmartTravelPlaners.BLL.Features.Hotel.Interfaces.IHotelApiService>().Object);
             var flightPlugin = new SmartTravelPlaners.BLL.Features.Flight.Plugins.FlightPlugin(new Mock<SmartTravelPlaners.BLL.Features.Flight.Interfaces.IFlightService>().Object);
             var placesPlugin = new SmartTravelPlaners.BLL.Features.Place.Plugins.PlacesPlugin(new Mock<SmartTravelPlaners.BLL.Features.Place.Interfaces.IPlacesApiService>().Object, new Mock<Microsoft.Extensions.Logging.ILogger<SmartTravelPlaners.BLL.Features.Place.Plugins.PlacesPlugin>>().Object);
             var tripPlugin = new SmartTravelPlaners.BLL.Features.Trips.Plugins.TripPlugin(_tripCreationMock.Object, _tripRepoMock.Object, _uowMock.Object, _serviceProviderMock.Object);

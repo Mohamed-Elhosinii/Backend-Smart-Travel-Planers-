@@ -15,7 +15,7 @@ namespace SmartTravelPlaners.BLL.Features.Hotel.Interfaces
 
         Task<List<GoogleHotelDto>> FilterHotelsAsync(
             string location, string checkIn, string checkOut,
-            decimal? maxPrice, double? minRating, List<string>? amenities,
+            decimal? maxPrice, decimal? minPrice, double? minRating, List<string>? amenities,
             int adults = 2, int children = 0);
 
         Task<List<GoogleHotelDto>> GetHotelsNearLocationAsync(

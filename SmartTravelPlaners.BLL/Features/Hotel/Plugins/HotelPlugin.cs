@@ -8,17 +8,9 @@ namespace SmartTravelPlaners.BLL.Features.Hotel.Plugins
     public class HotelPlugin
     {
         private readonly IHotelApiService _hotelApiService;
-        private readonly IPlaceResolverService _placeResolverService;
-        private readonly IHotelSearchService _hotelSearchService;
-
-        public HotelPlugin(
-            IHotelApiService hotelApiService,
-            IPlaceResolverService placeResolverService,
-            IHotelSearchService hotelSearchService)
+        public HotelPlugin(IHotelApiService hotelApiService)
         {
             _hotelApiService = hotelApiService;
-            _placeResolverService = placeResolverService;
-            _hotelSearchService = hotelSearchService;
         }
 
         [KernelFunction("search_hotels")]
@@ -33,23 +25,8 @@ namespace SmartTravelPlaners.BLL.Features.Hotel.Plugins
             if (!DateTime.TryParse(checkIn, out var ci) || !DateTime.TryParse(checkOut, out var co))
                 return JsonSerializer.Serialize(new { message = "Invalid check-in or check-out dates." });
 
-            var resolveResult = await _placeResolverService.ResolveAsync(city);
-            
-            List<SmartTravelPlaners.BLL.Features.Hotel.DTOs.GoogleHotelDto> finalHotels;
-
-            if (resolveResult.Status == SmartTravelPlaners.BLL.Features.Hotel.DTOs.ResolutionStatus.Resolved && !string.IsNullOrEmpty(resolveResult.DestId))
-            {
-                var searchResult = await _hotelSearchService.SearchAsync(
-                    resolveResult.DestId, resolveResult.DestType, ci, co, adults, 1);
-                
-                var hotelDtos = searchResult.Hotels ?? new List<SmartTravelPlaners.BLL.Features.Hotel.DTOs.HotelDto>();
-                finalHotels = MapHotelDtosToGoogleHotelDto(hotelDtos);
-            }
-            else
-            {
-                var googleHotels = await _hotelApiService.GetAvailableHotelsAsync(city, checkIn, checkOut, adults, children);
-                finalHotels = googleHotels ?? new List<SmartTravelPlaners.BLL.Features.Hotel.DTOs.GoogleHotelDto>();
-            }
+            var googleHotels = await _hotelApiService.GetAvailableHotelsAsync(city, checkIn, checkOut, adults, children);
+            var finalHotels = googleHotels ?? new List<SmartTravelPlaners.BLL.Features.Hotel.DTOs.GoogleHotelDto>();
 
             if (finalHotels.Count == 0)
                 return JsonSerializer.Serialize(new { message = "No hotels found for this search." });
@@ -57,34 +34,6 @@ namespace SmartTravelPlaners.BLL.Features.Hotel.Plugins
             return JsonSerializer.Serialize(finalHotels);
         }
 
-        private List<SmartTravelPlaners.BLL.Features.Hotel.DTOs.GoogleHotelDto> MapHotelDtosToGoogleHotelDto(List<SmartTravelPlaners.BLL.Features.Hotel.DTOs.HotelDto> hotelDtos)
-        {
-            return hotelDtos.Select(h => new SmartTravelPlaners.BLL.Features.Hotel.DTOs.GoogleHotelDto
-            {
-                HotelId = h.HotelId,
-                Name = h.Name,
-                Price = h.Price != null ? new SmartTravelPlaners.BLL.Features.Hotel.DTOs.HotelPrice
-                {
-                    PricePerNight = (double)h.Price.Amount,
-                    Currency = h.Price.Currency
-                } : new SmartTravelPlaners.BLL.Features.Hotel.DTOs.HotelPrice(),
-                Rating = h.Rating != null ? new SmartTravelPlaners.BLL.Features.Hotel.DTOs.HotelRating
-                {
-                    Value = h.Rating.Score,
-                    Votes = h.Rating.ReviewCount,
-                    RatingMax = 10
-                } : new SmartTravelPlaners.BLL.Features.Hotel.DTOs.HotelRating(),
-                Images = h.Images ?? new List<string>(),
-                Location = new SmartTravelPlaners.BLL.Features.Hotel.DTOs.HotelLocation
-                {
-                    Address = h.Location?.Address ?? "",
-                    Latitude = h.Location?.Latitude ?? 0,
-                    Longitude = h.Location?.Longitude ?? 0
-                },
-                Amenities = h.Amenities ?? new List<string>(),
-                Stars = h.Stars,
-            }).ToList();
-        }
 
         [KernelFunction("get_hotel_details")]
         [Description("Get full details about a specific hotel by its name or ID from previous search results")]
@@ -107,11 +56,16 @@ namespace SmartTravelPlaners.BLL.Features.Hotel.Plugins
             [Description("City name")] string city,
             [Description("Check-in date yyyy-MM-dd")] string checkIn,
             [Description("Check-out date yyyy-MM-dd")] string checkOut,
-            [Description("Maximum price per night in USD")] decimal maxPrice,
-            [Description("Minimum rating from 1 to 5")] double minRating,
-            [Description("Required amenities e.g. pool, wifi, breakfast")] List<string> amenities)
+            [Description("Maximum price per night in USD")] decimal maxPrice = 0,
+            [Description("Minimum price per night in USD")] decimal minPrice = 0,
+            [Description("Minimum rating from 1 to 5")] double minRating = 0,
+            [Description("Required amenities e.g. pool, wifi, breakfast")] List<string>? amenities = null)
         {
-            var hotels = await _hotelApiService.FilterHotelsAsync(city, checkIn, checkOut, maxPrice, minRating, amenities);
+            var maxP = maxPrice > 0 ? (decimal?)maxPrice : null;
+            var minP = minPrice > 0 ? (decimal?)minPrice : null;
+            var minR = minRating > 0 ? (double?)minRating : null;
+
+            var hotels = await _hotelApiService.FilterHotelsAsync(city, checkIn, checkOut, maxP, minP, minR, amenities);
 
             if (hotels.Count == 0)
                 return JsonSerializer.Serialize(new { message = "No hotels matched these filters." });
@@ -127,7 +81,7 @@ namespace SmartTravelPlaners.BLL.Features.Hotel.Plugins
             [Description("Check-out date yyyy-MM-dd")] string checkOut,
             [Description("Latitude of the target location")] double latitude,
             [Description("Longitude of the target location")] double longitude,
-            [Description("Search radius in kilometers")] int radiusKm)
+            [Description("Search radius in kilometers")] int radiusKm = 5)
         {
             var hotels = await _hotelApiService.GetHotelsNearLocationAsync(city, checkIn, checkOut, latitude, longitude, radiusKm);
 

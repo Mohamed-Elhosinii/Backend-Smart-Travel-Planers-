@@ -210,8 +210,15 @@ namespace SmartTravelPlaners.BLL.Features.Trips.Plugins
         }
 
         [KernelFunction("update_hotel")]
-        [Description("Generate a different hotel for the current trip.")]
-        public Task<string> UpdateHotelAsync()
+        [Description("Update the trip's hotel to a specific hotel you found via search.")]
+        public Task<string> UpdateHotelAsync(
+            [Description("The exact name of the hotel")] string name,
+            [Description("The price per night")] double pricePerNight,
+            [Description("The latitude")] double lat,
+            [Description("The longitude")] double lng,
+            [Description("The full address")] string address,
+            [Description("The rating/stars")] double rating = 0,
+            [Description("JSON array string of image URLs")] string imagesJson = "[]")
         {
             if (TripId == null)
             {
@@ -227,15 +234,15 @@ namespace SmartTravelPlaners.BLL.Features.Trips.Plugins
                 {
                     using var scope = _serviceProvider.CreateScope();
                     var orchestrator = scope.ServiceProvider.GetRequiredService<ITripOrchestratorService>();
-                    await orchestrator.RegenerateHotelAsync(tripId);
+                    await orchestrator.SetSpecificHotelAsync(tripId, name, (decimal)pricePerNight, lat, lng, address, rating, imagesJson);
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"RegenerateHotelAsync failed: {ex.Message}");
+                    Console.WriteLine($"SetSpecificHotelAsync failed: {ex.Message}");
                 }
             });
 
-            return Task.FromResult(JsonSerializer.Serialize(new { success = true, message = "جاري البحث عن فندق بديل مناسب... ثواني وهنعرضهولك." }));
+            return Task.FromResult(JsonSerializer.Serialize(new { success = true, message = $"تم تحديث الفندق إلى {name} بنجاح... جاري التجهيز." }));
         }
 
         [KernelFunction("update_activities")]

@@ -271,9 +271,7 @@ namespace SmartTravelPlaners.PL
             builder.Services.Configure<HotelApiSettings>(
                 builder.Configuration.GetSection("HotelApiSettings"));
             builder.Services.AddHttpClient<IHotelApiService, HotelApiService>();
-            builder.Services.AddHttpClient<IPlaceResolverService, PlaceResolverService>();
-            builder.Services.AddHttpClient<IHotelSearchService, HotelSearchService>();
-            builder.Services.AddHttpClient<IBookingLinksService, BookingLinksService>();
+
 
             // ---- Flight API ----
             builder.Services.AddHttpClient();

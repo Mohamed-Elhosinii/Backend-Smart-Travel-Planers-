@@ -140,6 +140,18 @@ You have access to a variety of tools (create_trip, update_trip_field, update_ho
 Use these tools to take any trip actions on behalf of the user. 
 IMPORTANT: After calling a tool, ALWAYS reply to the user in natural conversational language in their own language, summarizing what happened. NEVER expose raw JSON or tool output directly to the user.");
 
+                history.AddSystemMessage(@"CRITICAL RULES FOR HOTELS:
+1. NEVER invent, estimate, or hallucinate hotel data (Name, Price, PricePerNight, Lat, Lng, Address, BookingUrl, ImagesJson) when calling Trip-update_hotel.
+2. For ANY hotel-related request (e.g., change hotel, cheaper hotel, closer hotel, similar hotel), you MUST first call a search tool: Hotel-search_hotels, Hotel-filter_hotels, Hotel-get_hotels_near_location, or Hotel-get_similar_hotels to get real data.
+3. ONLY AFTER receiving real results from a search tool, you may call Trip-update_hotel using the EXACT literal values from the search result. Do not modify or round the values.
+4. If the user asks for a cheaper hotel, use filter_hotels or search_hotels first, pick the actual cheapest from the real results, and then update.
+5. If the user asks for a hotel near a specific location or coordinates, use get_hotels_near_location with the exact coordinates, then update using the first real result.
+6. If no real results are found or the search fails, inform the user in their language that no matching hotel was found. DO NOT invent a hotel.
+7. These rules apply ONLY to hotels. Do not apply them to flights or other features.
+8. If the user asks whether a hotel is available for specific dates, call Hotel-check_hotel_availability with the city, hotel name/id, check-in, and check-out dates. Tell the user the result in their language.
+9. If the user asks for more details about a specific hotel (amenities, photos, rating, etc.), call Hotel-get_hotel_details with the city and the hotel name.
+10. When calling Hotel-get_similar_hotels or Hotel-get_hotel_details, always pass the hotel NAME as the identifier, NOT the hotel_id.");
+
                 // Inject current date
                 history.AddSystemMessage($"Today's date is {DateTime.UtcNow:yyyy-MM-dd}. Use this to validate any dates the user or trip mentions — reject any date before today.");
 
@@ -160,14 +172,15 @@ IMPORTANT RULES:
 - The user is referring to THIS trip ONLY.
 - Never ask for the destination or any trip details again unless they want to change them.
 - Never ask for confirmation before making changes; just use the update_trip_field tool directly.
-- When the user says they want to change something but does NOT provide the new value, ask for it first in Arabic.
+- When the user says they want to change something but does NOT provide the new value, ask for it first IN THE USER'S LANGUAGE.
 - Only call the tool AFTER you have the new value.
-- For example: If the user says 'عدل الدولة' or 'غير الدولة' without specifying, ask: 'هل تقصد دولة الوجهة أم مدينة الانطلاق؟'
-- If they say 'الوجهة' or 'الذهاب', update the 'destination' field.
-- If they say 'الانطلاق' or 'المغادرة', update the 'origincity' field.
-- 'origincity' MUST be a specific CITY name, NEVER a country. If user says 'Egypt' or 'مصر', ask them 'من أي مدينة في مصر؟'.
-- If the user wants to change dates WITHOUT specifying which date (start or end), ask them first: 'هل تريد تغيير تاريخ البداية أم تاريخ العودة؟'
-- If user says 'تمام' or 'موافق' after a change, just confirm the change was made.
+- For example: If the user wants to change the destination/origin without specifying, ask: 'Do you mean the destination or the origin city?' (in their language).
+- If they say 'الوجهة' or 'destination', update the 'destination' field.
+- If they say 'الانطلاق' or 'origin', update the 'origincity' field.
+- 'origincity' MUST be a specific CITY name, NEVER a country. If user says 'Egypt' or 'مصر', ask them which city.
+- If the user wants to change dates WITHOUT specifying which date (start or end), ask them first which date they want to change (in their language).
+- If user confirms a change, just confirm the change was made in their language.
+- CRITICAL FOR LOCATIONS: If a city name is ambiguous or famous (like 'Roma', 'Alexandria', 'Paris'), ALWAYS append its most likely country to your internal tool parameters (e.g., use 'Rome, Italy' instead of 'Roma') UNLESS the user specifies otherwise. This prevents searching in the wrong country.
 ");
                 }
 

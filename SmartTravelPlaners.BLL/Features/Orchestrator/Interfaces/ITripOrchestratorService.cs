@@ -14,6 +14,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Interfaces
         /// </summary>
         Task<TripPlanDto> BuildTripPlanAsync(Guid tripId);
         Task<TripHotelDto?> RegenerateHotelAsync(Guid tripId);
+        Task<TripHotelDto?> SetSpecificHotelAsync(Guid tripId, string name, decimal pricePerNight, double lat, double lng, string address, double rating, string imagesJson);
         Task<List<ActivityPlanDto>> RegenerateDayActivitiesAsync(Guid tripId, int dayNumber);
         Task SyncDayPlansAsync(Guid tripId, string? changedField = null);
         Task<TripFlightDto?> RegenerateFlightAsync(Guid tripId);

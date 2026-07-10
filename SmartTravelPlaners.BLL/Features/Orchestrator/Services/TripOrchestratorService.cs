@@ -58,6 +58,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
 
                 var checkIn = trip.StartDate.ToString("yyyy-MM-dd");
                 var checkOut = trip.EndDate.ToString("yyyy-MM-dd");
+
                 var numberOfNights = trip.EndDate.DayNumber - trip.StartDate.DayNumber;
                 var numberOfDays = Math.Max(numberOfNights, 1);
 
@@ -836,6 +837,50 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 tripId, updatedTrip.BudgetSpent);
 
             return MapHotel(nextHotel);
+        }
+
+        public async Task<TripHotelDto?> SetSpecificHotelAsync(Guid tripId, string name, decimal pricePerNight, double lat, double lng, string address, double rating, string imagesJson)
+        {
+            var trip = await _unitOfWork.Trips.GetTripWithDetailsAsync(tripId)
+                ?? throw new Exception($"Trip {tripId} not found");
+
+            var oldHotels = await _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Hotel>()
+                .FindAsync(h => h.TripId == tripId);
+
+            foreach (var h in oldHotels)
+            {
+                _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Hotel>().Delete(h);
+            }
+
+            var hotelEntity = new SmartTravelPlaners.DAL.Entities.Hotel
+            {
+                Id = Guid.NewGuid(),
+                TripId = trip.Id,
+                Name = name,
+                Address = address,
+                Lat = lat,
+                Lng = lng,
+                CheckIn = trip.StartDate,
+                CheckOut = trip.EndDate,
+                PricePerNight = pricePerNight,
+                Stars = (int)Math.Round(rating),
+                Status = SmartTravelPlaners.DAL.Enums.BookingStatus.Suggested,
+                ImagesJson = string.IsNullOrWhiteSpace(imagesJson) ? "[]" : imagesJson
+            };
+
+            await _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Hotel>().AddAsync(hotelEntity);
+            await _unitOfWork.CompleteAsync();
+
+            return new TripHotelDto
+            {
+                Name = name,
+                Address = address,
+                PricePerNight = (double)pricePerNight,
+                Rating = rating,
+                Images = string.IsNullOrWhiteSpace(imagesJson) || imagesJson == "[]" 
+                         ? new List<string>() 
+                         : System.Text.Json.JsonSerializer.Deserialize<List<string>>(imagesJson) ?? new List<string>()
+            };
         }
 
         public async Task<List<ActivityPlanDto>> RegenerateDayActivitiesAsync(Guid tripId, int dayNumber)

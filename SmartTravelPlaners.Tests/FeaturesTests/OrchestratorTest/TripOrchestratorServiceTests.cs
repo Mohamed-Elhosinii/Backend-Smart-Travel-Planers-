@@ -45,10 +45,7 @@ namespace SmartTravelPlaners.Tests.Features.Orchestrator
             _placesApiMock = new Mock<IPlacesApiService>();
             _weatherApiMock = new Mock<IWeatherApiService>();
 
-            _hotelPlugin = new HotelPlugin(
-                _hotelApiMock.Object,
-                new Mock<SmartTravelPlaners.BLL.Features.Hotel.Interfaces.IPlaceResolverService>().Object,
-                new Mock<SmartTravelPlaners.BLL.Features.Hotel.Interfaces.IHotelSearchService>().Object);
+            _hotelPlugin = new HotelPlugin(_hotelApiMock.Object);
             _flightPlugin = new FlightPlugin(_flightApiMock.Object);
             _placesPlugin = new PlacesPlugin(_placesApiMock.Object, new Mock<Microsoft.Extensions.Logging.ILogger<PlacesPlugin>>().Object);
             _weatherPlugin = new WeatherPlugin(_weatherApiMock.Object);
