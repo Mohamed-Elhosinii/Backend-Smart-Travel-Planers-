@@ -19,44 +19,26 @@ namespace SmartTravelPlaners.BLL.Features.Flight.Services
         // AirLabs API credentials
         private readonly string _airlabsApiKey;
 
-        // IATA to ICAO airport code mapping
-        private static readonly Dictionary<string, string> IataToIcao =
+
+        private static readonly Dictionary<string, (string Iata, string Icao)> CountryToCityIataFallback =
             new(StringComparer.OrdinalIgnoreCase)
         {
-            { "CAI", "HECA" },
-            { "DXB", "OMDB" },
-            { "LHR", "EGLL" },
-            { "CDG", "LFPG" },
-            { "JFK", "KJFK" },
-            { "IST", "LTFM" },
-            { "RUH", "OERK" },
-            { "JED", "OEJN" },
-            { "DOH", "OTHH" },
-            { "AUH", "OMAA" },
-            { "AMM", "OJAI" },
-            { "BEY", "OLBA" },
-
-        };
-
-        private static readonly Dictionary<string, string> CountryToCityIataFallback =
-            new(StringComparer.OrdinalIgnoreCase)
-        {
-            { "Egypt", "CAI" },
-            { "مصر", "CAI" },
-            { "UAE", "DXB" },
-            { "United Arab Emirates", "DXB" },
-            { "الامارات", "DXB" },
-            { "الإمارات", "DXB" },
-            { "Saudi Arabia", "RUH" },
-            { "KSA", "RUH" },
-            { "السعودية", "RUH" },
-            { "Turkey", "IST" },
-            { "تركيا", "IST" },
-            { "France", "CDG" },
-            { "فرنسا", "CDG" },
-            { "UK", "LHR" },
-            { "United Kingdom", "LHR" },
-            { "بريطانيا", "LHR" }
+            { "Egypt", ("CAI", "HECA") },
+            { "مصر", ("CAI", "HECA") },
+            { "UAE", ("DXB", "OMDB") },
+            { "United Arab Emirates", ("DXB", "OMDB") },
+            { "الامارات", ("DXB", "OMDB") },
+            { "الإمارات", ("DXB", "OMDB") },
+            { "Saudi Arabia", ("RUH", "OERK") },
+            { "KSA", ("RUH", "OERK") },
+            { "السعودية", ("RUH", "OERK") },
+            { "Turkey", ("IST", "LTFM") },
+            { "تركيا", ("IST", "LTFM") },
+            { "France", ("CDG", "LFPG") },
+            { "فرنسا", ("CDG", "LFPG") },
+            { "UK", ("LHR", "EGLL") },
+            { "United Kingdom", ("LHR", "EGLL") },
+            { "بريطانيا", ("LHR", "EGLL") }
         };
 
         public FlightService(HttpClient httpClient, ILogger<FlightService> logger, IConfiguration configuration)
@@ -70,7 +52,7 @@ namespace SmartTravelPlaners.BLL.Features.Flight.Services
         // ============================================================
         // Resolve city name to IATA code using AirLabs Suggest API
         // ============================================================
-        public async Task<string> GetIataCodeAsync(string cityName)
+        public async Task<(string Iata, string Icao)> GetAirportCodesAsync(string cityName)
         {
             try
             {
@@ -86,10 +68,10 @@ namespace SmartTravelPlaners.BLL.Features.Flight.Services
                     cityName = cityName.Split(',')[0].Trim();
                 }
 
-                if (CountryToCityIataFallback.TryGetValue(cityName, out var fallbackIata))
+                if (CountryToCityIataFallback.TryGetValue(cityName, out var fallback))
                 {
-                    _logger.LogInformation("IATA code resolved from fallback map. City: {CityName}, IATA: {IATA}", cityName, fallbackIata);
-                    return fallbackIata;
+                    _logger.LogInformation("IATA code resolved from fallback map. City: {CityName}, IATA: {IATA}", cityName, fallback.Iata);
+                    return fallback;
                 }
 
                 _logger.LogInformation("Looking up IATA code for city: {CityName}", cityName);
@@ -120,13 +102,16 @@ namespace SmartTravelPlaners.BLL.Features.Flight.Services
                 foreach (var airport in airports.EnumerateArray())
                 {
                     if (airport.TryGetProperty("iata_code", out var iataNode) &&
-                        iataNode.ValueKind != JsonValueKind.Null)
+                        iataNode.ValueKind != JsonValueKind.Null &&
+                        airport.TryGetProperty("icao_code", out var icaoNode) &&
+                        icaoNode.ValueKind != JsonValueKind.Null)
                     {
                         var iata = iataNode.GetString();
-                        if (!string.IsNullOrWhiteSpace(iata))
+                        var icao = icaoNode.GetString();
+                        if (!string.IsNullOrWhiteSpace(iata) && !string.IsNullOrWhiteSpace(icao))
                         {
-                            _logger.LogInformation("IATA code resolved successfully. City: {CityName}, IATA: {IATA}", cityName, iata.ToUpper());
-                            return iata.ToUpper();
+                            _logger.LogInformation("Codes resolved successfully. City: {CityName}, IATA: {IATA}, ICAO: {ICAO}", cityName, iata.ToUpper(), icao.ToUpper());
+                            return (iata.ToUpper(), icao.ToUpper());
                         }
                     }
                 }
@@ -151,13 +136,13 @@ namespace SmartTravelPlaners.BLL.Features.Flight.Services
                 _logger.LogInformation("Flight search initiated. From: {DepartureCity}, To: {ArrivalCity}, Date: {DepartureDate}, Type: {TripType}", 
                     request.DepartureCity, request.ArrivalCity, request.DepartureDate, request.TripType);
 
-                var departureIata = await GetIataCodeAsync(request.DepartureCity);
+                var departureCodes = await GetAirportCodesAsync(request.DepartureCity);
                 await Task.Delay(1200);
 
-                var arrivalIata = await GetIataCodeAsync(request.ArrivalCity);
+                var arrivalCodes = await GetAirportCodesAsync(request.ArrivalCity);
                 await Task.Delay(1200);
 
-                var outbound = await GetFlightsAsync(departureIata, arrivalIata, request.DepartureDate);
+                var outbound = await GetFlightsAsync(departureCodes.Iata, departureCodes.Icao, arrivalCodes.Iata, request.DepartureDate);
 
                 List<FlightDto>? returnFlights = null;
 
@@ -170,7 +155,7 @@ namespace SmartTravelPlaners.BLL.Features.Flight.Services
                     }
 
                     await Task.Delay(1200);
-                    returnFlights = await GetFlightsAsync(arrivalIata, departureIata, request.ReturnDate);
+                    returnFlights = await GetFlightsAsync(arrivalCodes.Iata, arrivalCodes.Icao, departureCodes.Iata, request.ReturnDate);
                 }
 
                 _logger.LogInformation("Flight search completed. Outbound flights: {OutboundCount}, Return flights: {ReturnCount}", 
@@ -180,8 +165,8 @@ namespace SmartTravelPlaners.BLL.Features.Flight.Services
                 {
                     OutboundFlights = outbound,
                     ReturnFlights = returnFlights,
-                    DepartureIata = departureIata,
-                    ArrivalIata = arrivalIata
+                    DepartureIata = departureCodes.Iata,
+                    ArrivalIata = arrivalCodes.Iata
                 };
             }
             catch (Exception ex)
@@ -195,18 +180,17 @@ namespace SmartTravelPlaners.BLL.Features.Flight.Services
 
         private async Task<List<FlightDto>> GetFlightsAsync(
      string departureIata,
+     string departureIcao,
      string arrivalIata,
      string date)
         {
             try
             {
-                _logger.LogInformation("Fetching flights for route. From: {DepartureIata}, To: {ArrivalIata}, Date: {Date}", 
-                    departureIata, arrivalIata, date);
-
-                var icao = GetIcao(departureIata);
+                _logger.LogInformation("Fetching flights for route. From: {DepartureIata} ({DepartureIcao}), To: {ArrivalIata}, Date: {Date}", 
+                    departureIata, departureIcao, arrivalIata, date);
 
                 var morning = await FetchFromApi(
-                    icao,
+                    departureIcao,
                     arrivalIata,
                     departureIata,
                     $"{date}T00:00",
@@ -215,7 +199,7 @@ namespace SmartTravelPlaners.BLL.Features.Flight.Services
                 await Task.Delay(1200);
 
                 var evening = await FetchFromApi(
-                    icao,
+                    departureIcao,
                     arrivalIata,
                     departureIata,
                     $"{date}T11:00",
@@ -302,12 +286,12 @@ namespace SmartTravelPlaners.BLL.Features.Flight.Services
                         {
                             FlightNumber = GetString(item, "number"),
                             AirlineName = GetString(item, "airline", "name"),
+                            AirlineCode = GetString(item, "airline", "iata"),
                             DepartureAirport = departureIata,
                             ArrivalAirport = arrIata,
                             DepartureTime = GetString(item, "departure", "scheduledTime", "local"),
                             ArrivalTime = GetString(item, "arrival", "scheduledTime", "local"),
                             Status = GetString(item, "status"),
-                            AircraftModel = GetString(item, "aircraft", "model"),
                             DepartureTerminal = GetString(item, "departure", "terminal"),
                             ArrivalTerminal = GetString(item, "arrival", "terminal"),
                         });
@@ -327,15 +311,6 @@ namespace SmartTravelPlaners.BLL.Features.Flight.Services
             }
         }
 
-        // Convert IATA code to ICAO code
-        private string GetIcao(string iata)
-        {
-            if (IataToIcao.TryGetValue(iata, out var icao))
-                return icao;
-
-            throw new Exception(
-                $"ICAO code not found for airport: {iata} — please add it to IataToIcao dictionary");
-        }
 
         // Safely navigate nested JSON properties
         private string GetString(JsonElement element, params string[] path)

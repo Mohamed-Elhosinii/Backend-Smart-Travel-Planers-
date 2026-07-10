@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SmartTravelPlaners.DAL.Context;
 
@@ -11,9 +12,11 @@ using SmartTravelPlaners.DAL.Context;
 namespace SmartTravelPlaners.DAL.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260710163353_confirmcost_column")]
+    partial class confirmcost_column
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -399,12 +402,6 @@ namespace SmartTravelPlaners.DAL.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
-                    b.Property<string>("AirlineCode")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("ArrivalTerminal")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<DateTime>("ArrivalTime")
                         .HasColumnType("datetime2");
 
@@ -416,9 +413,6 @@ namespace SmartTravelPlaners.DAL.Migrations
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("DepartureTerminal")
-                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("DepartureTime")
                         .HasColumnType("datetime2");

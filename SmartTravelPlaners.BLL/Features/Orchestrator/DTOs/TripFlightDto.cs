@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -12,6 +12,10 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.DTOs
         public string ArrivalAirport { get; set; } = string.Empty;
         public string DepartureTime { get; set; } = string.Empty;
         public string ArrivalTime { get; set; } = string.Empty;
+        public string AirlineCode { get; set; } = string.Empty;
+        public string DepartureTerminal { get; set; } = string.Empty;
+        public string ArrivalTerminal { get; set; } = string.Empty;
+        public string FlightDuration { get; set; } = string.Empty;
 
         /// <summary>
         /// Estimated flight cost. The schedule provider (AeroDataBox/AirLabs) returns no

@@ -46,8 +46,8 @@ namespace SmartTravelPlaners.BLL.Features.Flight.Plugins
         public async Task<string> GetAirportCodeAsync(
             [Description("City or airport name e.g. Cairo, Dubai, London")] string cityName)
         {
-            var iata = await _flightService.GetIataCodeAsync(cityName);
-            return $"The IATA code for {cityName} is {iata}";
+            var codes = await _flightService.GetAirportCodesAsync(cityName);
+            return $"The IATA code for {cityName} is {codes.Iata} and the ICAO code is {codes.Icao}";
         }
     }
 }

@@ -509,6 +509,9 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                     Destination = flight.ArrivalAirport,
                     DepartureTime = ParseDateTime(flight.DepartureTime),
                     ArrivalTime = ParseDateTime(flight.ArrivalTime),
+                    AirlineCode = flight.AirlineCode,
+                    DepartureTerminal = flight.DepartureTerminal,
+                    ArrivalTerminal = flight.ArrivalTerminal,
                     // The schedule provider returns no ticket price, so persist the
                     // orchestrator's allocated flight budget as the estimated cost.
                     Price = flightBudget,
@@ -647,16 +650,28 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
             Images = hotel.Images
         };
 
-        private static TripFlightDto MapFlight(FlightDto flight, decimal estimatedPrice) => new()
+        private static TripFlightDto MapFlight(FlightDto flight, decimal estimatedPrice)
         {
-            AirlineName = flight.AirlineName,
-            FlightNumber = flight.FlightNumber,
-            DepartureAirport = flight.DepartureAirport,
-            ArrivalAirport = flight.ArrivalAirport,
-            DepartureTime = flight.DepartureTime,
-            ArrivalTime = flight.ArrivalTime,
-            EstimatedPrice = estimatedPrice
-        };
+            var dept = ParseDateTime(flight.DepartureTime);
+            var arr = ParseDateTime(flight.ArrivalTime);
+            var duration = arr - dept;
+            var durationStr = $"{(int)duration.TotalHours}h {duration.Minutes}m";
+
+            return new TripFlightDto
+            {
+                AirlineName = flight.AirlineName,
+                FlightNumber = flight.FlightNumber,
+                DepartureAirport = flight.DepartureAirport,
+                ArrivalAirport = flight.ArrivalAirport,
+                DepartureTime = flight.DepartureTime,
+                ArrivalTime = flight.ArrivalTime,
+                AirlineCode = flight.AirlineCode,
+                DepartureTerminal = flight.DepartureTerminal,
+                ArrivalTerminal = flight.ArrivalTerminal,
+                FlightDuration = durationStr,
+                EstimatedPrice = estimatedPrice
+            };
+        }
 
         private static string BuildSummary(
             Trip trip, GoogleHotelDto? hotel, FlightDto? flight, List<DayPlanDto> days)
@@ -1192,6 +1207,9 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 Destination = nextFlight.ArrivalAirport,
                 DepartureTime = ParseDateTime(nextFlight.DepartureTime),
                 ArrivalTime = ParseDateTime(nextFlight.ArrivalTime),
+                AirlineCode = nextFlight.AirlineCode,
+                DepartureTerminal = nextFlight.DepartureTerminal,
+                ArrivalTerminal = nextFlight.ArrivalTerminal,
                 Price = flightBudget,
                 Status = BookingStatus.Suggested
             };
@@ -1335,12 +1353,16 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 },
                 Flight = flightEntity is null ? null : new TripFlightDto
                 {
-                    AirlineName = flightEntity.Airline,
-                    FlightNumber = flightEntity.FlightNumber,
+                    AirlineName = flightEntity.Airline ?? string.Empty,
+                    FlightNumber = flightEntity.FlightNumber ?? string.Empty,
                     DepartureAirport = flightEntity.Origin,
                     ArrivalAirport = flightEntity.Destination,
                     DepartureTime = flightEntity.DepartureTime.ToString("o"),
                     ArrivalTime = flightEntity.ArrivalTime.ToString("o"),
+                    AirlineCode = flightEntity.AirlineCode ?? string.Empty,
+                    DepartureTerminal = flightEntity.DepartureTerminal ?? string.Empty,
+                    ArrivalTerminal = flightEntity.ArrivalTerminal ?? string.Empty,
+                    FlightDuration = $"{(int)(flightEntity.ArrivalTime - flightEntity.DepartureTime).TotalHours}h {(flightEntity.ArrivalTime - flightEntity.DepartureTime).Minutes}m",
                     EstimatedPrice = flightEntity.Price
                 },
                 Days = dayDtos,

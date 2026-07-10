@@ -34,6 +34,7 @@ namespace SmartTravelPlaners.DAL.Repositories.Concrete
         public async Task<List<ChatSession>> GetSessionsByUserAsync(string userId)
         {
             return await _context.ChatSessions
+                .AsNoTracking()
                 .Where(s => s.UserId == userId)
                 .OrderByDescending(s => s.UpdatedAt)
                 .ToListAsync();

@@ -1,4 +1,4 @@
-﻿namespace SmartTravelPlaners.BLL.Features.Flight.DTOs
+namespace SmartTravelPlaners.BLL.Features.Flight.DTOs
 {
     public class FlightDto
     {
@@ -9,7 +9,7 @@
         public string DepartureTime { get; set; } = "";
         public string ArrivalTime { get; set; } = "";
         public string Status { get; set; } = "";
-        public string AircraftModel { get; set; } = "";
+        public string AirlineCode { get; set; } = "";
         public string DepartureTerminal { get; set; } = "";
         public string ArrivalTerminal { get; set; } = "";
     }

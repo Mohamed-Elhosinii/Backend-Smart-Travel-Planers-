@@ -20,5 +20,10 @@ namespace SmartTravelPlaners.DAL.Entities
         public string? BookingUrl { get; set; }
         public CabinClass CabinClass { get; set; } = CabinClass.Economy;
         public BookingStatus Status { get; set; } = BookingStatus.Suggested;
+
+        // UI Detail Fields
+        public string? AirlineCode { get; set; }
+        public string? DepartureTerminal { get; set; }
+        public string? ArrivalTerminal { get; set; }
     }
 }
