@@ -35,6 +35,11 @@ namespace SmartTravelPlaners.DAL.Context
         {
             base.OnModelCreating(modelBuilder); 
             modelBuilder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);
+
+            // Configure decimal precision for ConfirmedCost
+            modelBuilder.Entity<Trip>()
+                .Property(t => t.ConfirmedCost)
+                .HasPrecision(18, 2);
         }
     }
 }

@@ -215,7 +215,7 @@ namespace SmartTravelPlaners.DAL.Migrations
 
                     b.HasIndex("TripDayId");
 
-                    b.ToTable("Activities");
+                    b.ToTable("Activities", (string)null);
                 });
 
             modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.ApplicationUser", b =>
@@ -315,7 +315,7 @@ namespace SmartTravelPlaners.DAL.Migrations
 
                     b.HasIndex("SessionId");
 
-                    b.ToTable("ChatMessages");
+                    b.ToTable("ChatMessages", (string)null);
                 });
 
             modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.ChatSession", b =>
@@ -352,7 +352,7 @@ namespace SmartTravelPlaners.DAL.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("ChatSessions");
+                    b.ToTable("ChatSessions", (string)null);
                 });
 
             modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.ExternalApiCache", b =>
@@ -386,7 +386,7 @@ namespace SmartTravelPlaners.DAL.Migrations
                     b.HasIndex("CacheKey", "Source")
                         .IsUnique();
 
-                    b.ToTable("ExternalApiCaches");
+                    b.ToTable("ExternalApiCaches", (string)null);
                 });
 
             modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.Flight", b =>
@@ -443,7 +443,7 @@ namespace SmartTravelPlaners.DAL.Migrations
 
                     b.HasIndex("TripId");
 
-                    b.ToTable("Flights");
+                    b.ToTable("Flights", (string)null);
                 });
 
             modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.Hotel", b =>
@@ -498,7 +498,7 @@ namespace SmartTravelPlaners.DAL.Migrations
 
                     b.HasIndex("TripId");
 
-                    b.ToTable("Hotels");
+                    b.ToTable("Hotels", (string)null);
                 });
 
             modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.PaymentTransaction", b =>
@@ -536,7 +536,7 @@ namespace SmartTravelPlaners.DAL.Migrations
 
                     b.HasIndex("SubscriptionId");
 
-                    b.ToTable("PaymentTransactions");
+                    b.ToTable("PaymentTransactions", (string)null);
                 });
 
             modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.PlaceCache", b =>
@@ -600,7 +600,7 @@ namespace SmartTravelPlaners.DAL.Migrations
 
                     b.HasIndex("NormalizedQuery");
 
-                    b.ToTable("PlacesCache");
+                    b.ToTable("PlacesCache", (string)null);
                 });
 
             modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.Plan", b =>
@@ -629,7 +629,7 @@ namespace SmartTravelPlaners.DAL.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Plans");
+                    b.ToTable("Plans", (string)null);
 
                     b.HasData(
                         new
@@ -685,7 +685,7 @@ namespace SmartTravelPlaners.DAL.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("RefreshTokens");
+                    b.ToTable("RefreshTokens", (string)null);
                 });
 
             modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.Subscription", b =>
@@ -721,7 +721,7 @@ namespace SmartTravelPlaners.DAL.Migrations
 
                     b.HasIndex("UserProfileId");
 
-                    b.ToTable("Subscriptions");
+                    b.ToTable("Subscriptions", (string)null);
                 });
 
             modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.Trip", b =>
@@ -774,7 +774,7 @@ namespace SmartTravelPlaners.DAL.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("Trips");
+                    b.ToTable("Trips", (string)null);
                 });
 
             modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.TripDay", b =>
@@ -802,7 +802,7 @@ namespace SmartTravelPlaners.DAL.Migrations
 
                     b.HasIndex("TripId");
 
-                    b.ToTable("TripDays");
+                    b.ToTable("TripDays", (string)null);
                 });
 
             modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.TripPreference", b =>
@@ -828,7 +828,7 @@ namespace SmartTravelPlaners.DAL.Migrations
 
                     b.HasIndex("TripId");
 
-                    b.ToTable("TripPreferences");
+                    b.ToTable("TripPreferences", (string)null);
                 });
 
             modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.UsageCounter", b =>
@@ -860,7 +860,7 @@ namespace SmartTravelPlaners.DAL.Migrations
                     b.HasIndex("UserProfileId", "PeriodMonth")
                         .IsUnique();
 
-                    b.ToTable("UsageCounters");
+                    b.ToTable("UsageCounters", (string)null);
                 });
 
             modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.UserProfile", b =>
@@ -892,7 +892,7 @@ namespace SmartTravelPlaners.DAL.Migrations
                     b.HasIndex("AspNetUserId")
                         .IsUnique();
 
-                    b.ToTable("UserProfiles");
+                    b.ToTable("UserProfiles", (string)null);
                 });
 
             modelBuilder.Entity("SmartTravelPlaners.DAL.Entities.WeatherDay", b =>
@@ -933,7 +933,7 @@ namespace SmartTravelPlaners.DAL.Migrations
 
                     b.HasIndex("TripId");
 
-                    b.ToTable("WeatherDays");
+                    b.ToTable("WeatherDays", (string)null);
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>

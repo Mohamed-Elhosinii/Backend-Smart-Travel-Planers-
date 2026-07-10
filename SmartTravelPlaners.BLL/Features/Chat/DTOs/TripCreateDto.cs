@@ -30,6 +30,7 @@ namespace SmartTravelPlaners.BLL.Features.Chat.DTOs
         [Range(1, int.MaxValue, ErrorMessage = "NumTravelers must be at least 1.")]
         public int NumTravelers { get; set; }
 
+        [Range(100, double.MaxValue, ErrorMessage = "BudgetTotal must be at least 100 USD.")]
         public decimal BudgetTotal { get; set; }
 
         public bool? IsRoundTrip { get; set; }
@@ -57,6 +58,13 @@ namespace SmartTravelPlaners.BLL.Features.Chat.DTOs
             if (BudgetTotal <= 0)
                 yield return new ValidationResult(
                     "BudgetTotal must be greater than 0.", new[] { nameof(BudgetTotal) });
+
+            // Minimum budget: 100 USD
+            const decimal MinimumBudget = 100m;
+            if (BudgetTotal < MinimumBudget)
+                yield return new ValidationResult(
+                    $"BudgetTotal must be at least {MinimumBudget:F0} USD to create a meaningful trip plan.",
+                    new[] { nameof(BudgetTotal) });
         }
     }
 }
