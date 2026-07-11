@@ -21,6 +21,6 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Interfaces
         Task<List<TripFlightDto>> RegenerateFlightAsync(Guid tripId);
         Task RegenerateWeatherAsync(Guid tripId);
         Task<TripPlanDto> GetCurrentPlanAsync(Guid tripId);
-        
+        Task UpdateActivityImageAsync(Guid activityId, string imageUrl);
     }
 }

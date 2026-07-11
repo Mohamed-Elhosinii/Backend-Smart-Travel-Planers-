@@ -17,8 +17,10 @@ namespace SmartTravelPlaners.BLL.Features.Place.Mappers
                 Name = places.Name,
                 Category = places.Categories?.FirstOrDefault()?.Name ?? "General",
                 Address = places.Location?.Formatted_Address ?? "",
-                Latitude = places.Latitude,
-                Longitude = places.Longitude
+                Latitude = places.Geocodes?.Main?.Latitude ?? places.Latitude,
+                Longitude = places.Geocodes?.Main?.Longitude ?? places.Longitude,
+                Rating = places.Rating,
+                PriceLevel = places.Price
             };
         }
         public static NearbyPlaceDto ToNearbyDto(this GeotaggingCandidate candidate)

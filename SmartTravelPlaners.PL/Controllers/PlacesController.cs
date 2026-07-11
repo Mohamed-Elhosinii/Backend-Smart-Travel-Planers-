@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using SmartTravelPlaners.BLL.Features.Place.Interfaces;
@@ -6,7 +6,7 @@ using SmartTravelPlaners.BLL.Features.Place.Interfaces;
 namespace SmartTravelPlaners.PL.Controllers
 {
     [ApiController]
-    [Route("api/test")]
+    [Route("api/places")]
     public class PlacesController : ControllerBase
     {
         private readonly IPlacesApiService _placesService;

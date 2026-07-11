@@ -1,4 +1,4 @@
-﻿using SmartTravelPlaners.BLL.Features.Place.DTOs;
+using SmartTravelPlaners.BLL.Features.Place.DTOs;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -7,6 +7,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.DTOs
 {
     public class ActivityPlanDto
     {
+        public Guid Id { get; set; }
         public string Name { get; set; } = string.Empty;
         public string Type { get; set; } = string.Empty;   // "Restaurant", "Attraction", "Cafe"...
         public string? LocationName { get; set; }
@@ -15,6 +16,11 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.DTOs
         public string? TimeSlot { get; set; }               // "Morning" | "Lunch" | "Afternoon" | "Dinner"
         public decimal EstimatedCost { get; set; }
         public string? PlaceId { get; set; }
+        
+        public double? Rating { get; set; }
+        public string? Address { get; set; }
+        public string? ImageUrl { get; set; }
+
         public List<PlacePhotoDto> Images { get; set; }= new List<PlacePhotoDto>();
     }
 }

@@ -21,6 +21,10 @@ namespace SmartTravelPlaners.DAL.Entities
         public string? BookingUrl { get; set; }
         public ActivityStatus Status { get; set; } = ActivityStatus.Suggested;
         public string? Notes { get; set; }
+        
+        public double? Rating { get; set; }
+        public string? Address { get; set; }
+        public string? ImageUrl { get; set; }
 
         // Soft reference to Places Cache (not a FK)
         public string? PlaceId { get; set; }    // Google Places ID

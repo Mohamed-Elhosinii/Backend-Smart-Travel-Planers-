@@ -17,17 +17,20 @@ namespace SmartTravelPlaners.PL.Controllers
         private readonly ITripCreationService _tripCreationService;
         private readonly ITripRepository _tripRepository;
         private readonly IPlacesApiService _placesService;
+        private readonly SmartTravelPlaners.BLL.Features.Orchestrator.Interfaces.ITripOrchestratorService _orchestrator;
         private readonly ILogger<TripController> _logger;
 
         public TripController(
             ITripCreationService tripCreationService,
             ITripRepository tripRepository,
             IPlacesApiService placesService,
+            SmartTravelPlaners.BLL.Features.Orchestrator.Interfaces.ITripOrchestratorService orchestrator,
             ILogger<TripController> logger)
         {
             _tripCreationService = tripCreationService;
             _tripRepository = tripRepository;
             _placesService = placesService;
+            _orchestrator = orchestrator;
             _logger = logger;
         }
 
@@ -150,6 +153,25 @@ namespace SmartTravelPlaners.PL.Controllers
             {
                 _logger.LogError(ex, "Trip suggestions retrieval failed for TripId: {TripId}. Error: {ErrorMessage}", tripId, ex.Message);
                 throw;
+            }
+        }
+
+        // PATCH api/trip/activity/{activityId}/image
+        [HttpPatch("activity/{activityId}/image")]
+        public async Task<IActionResult> UpdateActivityImage(Guid activityId, [FromBody] SmartTravelPlaners.BLL.Features.Orchestrator.DTOs.UpdateActivityImageDto request)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(request.ImageUrl))
+                    return BadRequest("ImageUrl is required.");
+
+                await _orchestrator.UpdateActivityImageAsync(activityId, request.ImageUrl);
+                return Ok();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Updating activity image failed for ActivityId: {ActivityId}. Error: {ErrorMessage}", activityId, ex.Message);
+                return StatusCode(500, "An error occurred while updating the activity image.");
             }
         }
     }

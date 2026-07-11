@@ -16,12 +16,25 @@ namespace SmartTravelPlaners.BLL.Features.Place.Models
         public string Fsq_Place_Id { get; set; } = string.Empty;
         [JsonPropertyName("name")]
         public string Name { get; set; } = string.Empty;
-
+        public FoursquareGeocodes? Geocodes { get; set; }
         public double Latitude { get; set; }
         public double Longitude { get; set; }
+        public double Rating { get; set; }
+        public int Price { get; set; }
 
         public FoursquareLocation? Location { get; set; }
         public List<FoursquareCategory> Categories { get; set; } = new();
+    }
+
+    public class FoursquareGeocodes
+    {
+        public FoursquareGeocodeMain? Main { get; set; }
+    }
+
+    public class FoursquareGeocodeMain
+    {
+        public double Latitude { get; set; }
+        public double Longitude { get; set; }
     }
 
     public class FoursquareLocation

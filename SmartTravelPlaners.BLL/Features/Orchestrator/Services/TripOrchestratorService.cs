@@ -460,6 +460,9 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 TimeSlot = timeSlot,
                 EstimatedCost = estimatedCost,
                 PlaceId = place.FsqPlaceId,
+                Rating = place.Rating,
+                Address = place.Address,
+                ImageUrl = place.ImageUrl,
                 Images = place.Images,
             });
         }
@@ -548,7 +551,9 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                         EstimatedCost = activity.EstimatedCost,
                         Status = ActivityStatus.Suggested,
                         PlaceId = activity.PlaceId,
-
+                        Rating = activity.Rating,
+                        Address = activity.Address,
+                        ImageUrl = activity.ImageUrl
                     });
                 }
 
@@ -992,7 +997,10 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                     TimeSlot = activity.TimeSlot ?? "Morning",
                     EstimatedCost = activity.EstimatedCost,
                     Status = ActivityStatus.Suggested,
-                    PlaceId = activity.PlaceId
+                    PlaceId = activity.PlaceId,
+                    Rating = activity.Rating,
+                    Address = activity.Address,
+                    ImageUrl = activity.ImageUrl
                 });
             }
 
@@ -1108,6 +1116,9 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                             EstimatedCost = activity.EstimatedCost,
                             Status = ActivityStatus.Suggested,
                             PlaceId = activity.PlaceId,
+                            Rating = activity.Rating,
+                            Address = activity.Address,
+                            ImageUrl = activity.ImageUrl
                         });
                     }
 
@@ -1452,6 +1463,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 BudgetAllocated = d.BudgetAllocated,
                 Activities = d.Activities.Select(a => new ActivityPlanDto
                 {
+                    Id = a.Id,
                     Name = a.Name,
                     Type = a.Type.ToString(),
                     LocationName = a.LocationName,
@@ -1459,7 +1471,10 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                     Lng = a.Lng,
                     TimeSlot = a.TimeSlot,
                     EstimatedCost = a.EstimatedCost,
-                    PlaceId = a.PlaceId
+                    PlaceId = a.PlaceId,
+                    Rating = a.Rating,
+                    Address = a.Address,
+                    ImageUrl = a.ImageUrl
                 }).ToList(),
                 Weather = weatherDays.FirstOrDefault(w => w.Date == d.Date)
             }).ToList();
@@ -1555,6 +1570,22 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                           $"{(flightEntity != null ? $" with a flight via {flightEntity.Airline}" : "")}, " +
                           $"with {dayDtos.Count} day(s) of planned activities."
             };
+        }
+
+        public async Task UpdateActivityImageAsync(Guid activityId, string imageUrl)
+        {
+            var activity = await _unitOfWork.Repository<Activity>().GetByIdAsync(activityId);
+            if (activity == null)
+            {
+                _logger.LogWarning("Activity with ID {ActivityId} not found.", activityId);
+                return;
+            }
+
+            activity.ImageUrl = imageUrl;
+            _unitOfWork.Repository<Activity>().Update(activity);
+            await _unitOfWork.CompleteAsync();
+
+            _logger.LogInformation("Updated ImageUrl for Activity {ActivityId}", activityId);
         }
     }
 }

@@ -53,12 +53,23 @@ namespace SmartTravelPlaners.BLL.Features.Place.Services
                     var q = query.ToLower();
                     switch (q)
                     {
-                        case "attraction": categoryIds = "10000,16000"; textQuery = null; break;
+                        case "attraction":
+                        case "tourist attraction": categoryIds = "10027,16000"; textQuery = null; break;
                         case "restaurant": categoryIds = "13065"; textQuery = null; break;
                         case "cafe": categoryIds = "13032"; textQuery = null; break;
                         case "museum": categoryIds = "10027"; textQuery = null; break;
                         case "park": categoryIds = "16032"; textQuery = null; break;
                         case "shopping": categoryIds = "17000"; textQuery = null; break;
+                        case "historic site": categoryIds = "16020"; textQuery = null; break;
+                        case "monument": categoryIds = "16024"; textQuery = null; break;
+                        case "beach": categoryIds = "16003"; textQuery = null; break;
+                        case "art gallery": categoryIds = "10004"; textQuery = null; break;
+                        case "scenic lookout": categoryIds = "16043"; textQuery = null; break;
+                        case "zoo": categoryIds = "10032"; textQuery = null; break;
+                        case "aquarium": categoryIds = "10001"; textQuery = null; break;
+                        case "castle": categoryIds = "16011"; textQuery = null; break;
+                        case "botanical garden": categoryIds = "16005"; textQuery = null; break;
+                        case "cultural center": categoryIds = "10015"; textQuery = null; break;
                         default: categoryIds = "10000,13000,16000,17000,18000"; break; // Excludes pharmacies/stations
                     }
                 }
@@ -129,12 +140,23 @@ namespace SmartTravelPlaners.BLL.Features.Place.Services
                     var q = query.ToLower();
                     switch (q)
                     {
-                        case "attraction": categoryIds = "10000,16000"; textQuery = null; break;
+                        case "attraction":
+                        case "tourist attraction": categoryIds = "10027,16000"; textQuery = null; break;
                         case "restaurant": categoryIds = "13065"; textQuery = null; break;
                         case "cafe": categoryIds = "13032"; textQuery = null; break;
                         case "museum": categoryIds = "10027"; textQuery = null; break;
                         case "park": categoryIds = "16032"; textQuery = null; break;
                         case "shopping": categoryIds = "17000"; textQuery = null; break;
+                        case "historic site": categoryIds = "16020"; textQuery = null; break;
+                        case "monument": categoryIds = "16024"; textQuery = null; break;
+                        case "beach": categoryIds = "16003"; textQuery = null; break;
+                        case "art gallery": categoryIds = "10004"; textQuery = null; break;
+                        case "scenic lookout": categoryIds = "16043"; textQuery = null; break;
+                        case "zoo": categoryIds = "10032"; textQuery = null; break;
+                        case "aquarium": categoryIds = "10001"; textQuery = null; break;
+                        case "castle": categoryIds = "16011"; textQuery = null; break;
+                        case "botanical garden": categoryIds = "16005"; textQuery = null; break;
+                        case "cultural center": categoryIds = "10015"; textQuery = null; break;
                         default: categoryIds = "10000,13000,16000,17000,18000"; break; // Excludes pharmacies/stations
                     }
                 }
