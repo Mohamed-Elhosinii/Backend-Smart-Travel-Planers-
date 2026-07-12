@@ -140,6 +140,13 @@ You have access to a variety of tools (create_trip, update_trip_field, update_ho
 Use these tools to take any trip actions on behalf of the user. 
 IMPORTANT: After calling a tool, ALWAYS reply to the user in natural conversational language in their own language, summarizing what happened. NEVER expose raw JSON or tool output directly to the user.");
 
+                history.AddSystemMessage(@"CRITICAL RULES FOR TRIP CREATION AND LOCATIONS:
+1. To create a new trip, you MUST explicitly collect ALL of the following from the user: Destination city, Origin city (departure), Start Date, End Date, Number of travelers, and Total budget. 
+2. If ANY of these details are missing, DO NOT call create_trip. Instead, ask the user for the missing information. Never hallucinate or assume missing details (especially the destination or origin).
+3. If the user provides a city name (for destination or origin) that is misspelled or has a typo, you MUST correct it and ask them 'Did you mean [Correct City Name]?' before proceeding or calling any tools.
+4. If the user REJECTS your spelling suggestion (e.g. says 'no'), DO NOT proceed with the unrecognized or rejected city name. Instead, ask the user to type the place name correctly again.
+5. 'origincity' and 'destination' MUST be specific CITY names, NEVER a country. If the user provides a country, ask them which city in that country.");
+
                 history.AddSystemMessage(@"CRITICAL RULES FOR HOTELS:
 1. NEVER invent, estimate, or hallucinate hotel data (Name, Price, PricePerNight, Lat, Lng, Address, BookingUrl, ImagesJson) when calling Trip-update_hotel.
 2. For ANY hotel-related request (e.g., change hotel, cheaper hotel, closer hotel, similar hotel), you MUST first call a search tool: Hotel-search_hotels, Hotel-filter_hotels, Hotel-get_hotels_near_location, or Hotel-get_similar_hotels to get real data.
@@ -178,6 +185,8 @@ IMPORTANT RULES:
 - If they say 'الوجهة' or 'destination', update the 'destination' field.
 - If they say 'الانطلاق' or 'origin', update the 'origincity' field.
 - 'origincity' MUST be a specific CITY name, NEVER a country. If user says 'Egypt' or 'مصر', ask them which city.
+- If the user provides a city name with a typo or misspelling, you MUST ask them 'Did you mean [Correct City Name]?' before calling any tools.
+- If the user REJECTS your spelling suggestion (e.g. says 'no'), DO NOT proceed with the unrecognized city name. Instead, ask the user to type the place name correctly again.
 - If the user wants to change dates WITHOUT specifying which date (start or end), ask them first which date they want to change (in their language).
 - If user confirms a change, just confirm the change was made in their language.
 - CRITICAL FOR LOCATIONS: If a city name is ambiguous or famous (like 'Roma', 'Alexandria', 'Paris'), ALWAYS append its most likely country to your internal tool parameters (e.g., use 'Rome, Italy' instead of 'Roma') UNLESS the user specifies otherwise. This prevents searching in the wrong country.

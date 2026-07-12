@@ -18,6 +18,38 @@ namespace SmartTravelPlaners.PL.Controllers
             _logger = logger;
         }
       
+        public class ResolveRequest
+        {
+            public string Query { get; set; }
+        }
+
+        [HttpPost("resolve")]
+        public IActionResult ResolveDestination([FromBody] ResolveRequest req)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(req?.Query))
+                    return BadRequest("Query is required");
+
+                _logger.LogInformation("Resolving destination: {Query}", req.Query);
+                
+                return Ok(new
+                {
+                    status = 0, // 0 = Resolved
+                    destId = Guid.NewGuid().ToString(),
+                    destType = "city",
+                    resolvedName = req.Query,
+                    originalInput = req.Query,
+                    source = "fallback",
+                    suggestion = (object)null
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to resolve destination. Error: {ErrorMessage}", ex.Message);
+                return StatusCode(500, "Internal server error");
+            }
+        }
 
         [HttpGet("places")]
         public async Task<IActionResult> GetPlaces([FromQuery] string city = "cairo",[FromQuery] string? query = null)

@@ -48,6 +48,7 @@ namespace SmartTravelPlaners.BLL.Features.Trips.Plugins
             [Description("Number of travelers")] int numTravelers,
             [Description("Total budget in the user's currency")] decimal budgetTotal,
             [Description("Origin city name for the flight. Null if no flight is needed. MUST be a specific city name, NEVER a country.")] string? originCity = null,
+            [Description("True if the user wants a round-trip flight (ذهاب وعودة), False if one-way (ذهاب فقط). Defaults to true.")] bool isRoundTrip = true,
             [Description("Comma-separated list of preferences, e.g. museum,park")] string preferences = "")
         {
             if (DateOnly.TryParse(startDate, out var start) && start < DateOnly.FromDateTime(DateTime.UtcNow))
@@ -67,7 +68,8 @@ namespace SmartTravelPlaners.BLL.Features.Trips.Plugins
                 EndDate = endDate,
                 NumTravelers = numTravelers,
                 BudgetTotal = budgetTotal,
-                Preferences = prefList
+                Preferences = prefList,
+                IsRoundTrip = isRoundTrip
             };
 
             var creationResult = await _tripCreationService.CreateAndBuildAsync(dto, UserId);
@@ -342,6 +344,87 @@ namespace SmartTravelPlaners.BLL.Features.Trips.Plugins
             });
 
             return Task.FromResult(JsonSerializer.Serialize(new { success = true, message = $"تم إضافة الرحلة {airline} ({flightNumber}) بنجاح... ثواني وهنعرضهالك." }));
+        }
+
+        [KernelFunction("remove_flight")]
+        [Description("Remove the flight from the current trip. Use this if the user asks to delete their flight without replacing it.")]
+        public Task<string> RemoveFlightAsync(
+            [Description("CRITICAL: You MUST specify which flight to remove. Options: 'Outbound' (ذهاب), 'Return' (عودة), or 'Both' (كلاهما).")] string flightType)
+        {
+            if (TripId == null) return Task.FromResult(JsonSerializer.Serialize(new { error = "مفيش رحلة موجودة عشان نمسح منها الطيران." }));
+            
+            var tripId = TripId.Value;
+            IsPlanUpdating = true; // Signal ChatService
+            
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using var scope = _serviceProvider.CreateScope();
+                    var orchestrator = scope.ServiceProvider.GetRequiredService<ITripOrchestratorService>();
+                    await orchestrator.RemoveFlightAsync(tripId, flightType);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"RemoveFlightAsync failed: {ex.Message}");
+                }
+            });
+
+            return Task.FromResult(JsonSerializer.Serialize(new { success = true, message = $"جاري مسح طيران الـ {flightType}... ثواني وهنعرضلك الرحلة." }));
+        }
+
+        [KernelFunction("remove_hotel")]
+        [Description("Remove the hotel from the current trip. Use this if the user asks to delete their hotel without replacing it.")]
+        public Task<string> RemoveHotelAsync()
+        {
+            if (TripId == null) return Task.FromResult(JsonSerializer.Serialize(new { error = "مفيش رحلة موجودة عشان نمسح منها الفندق." }));
+            
+            var tripId = TripId.Value;
+            IsPlanUpdating = true; // Signal ChatService
+            
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using var scope = _serviceProvider.CreateScope();
+                    var orchestrator = scope.ServiceProvider.GetRequiredService<ITripOrchestratorService>();
+                    await orchestrator.RemoveHotelAsync(tripId);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"RemoveHotelAsync failed: {ex.Message}");
+                }
+            });
+
+            return Task.FromResult(JsonSerializer.Serialize(new { success = true, message = "جاري مسح الفندق... ثواني وهنعرضلك الرحلة." }));
+        }
+
+        [KernelFunction("remove_activity")]
+        [Description("Remove a specific activity from a specific day of the current trip.")]
+        public Task<string> RemoveActivityAsync(
+            [Description("The day number containing the activity")] int dayNumber,
+            [Description("A unique part of the activity name to delete")] string activityName)
+        {
+            if (TripId == null) return Task.FromResult(JsonSerializer.Serialize(new { error = "مفيش رحلة موجودة عشان نمسح منها أنشطة." }));
+            
+            var tripId = TripId.Value;
+            IsPlanUpdating = true; // Signal ChatService
+            
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using var scope = _serviceProvider.CreateScope();
+                    var orchestrator = scope.ServiceProvider.GetRequiredService<ITripOrchestratorService>();
+                    await orchestrator.RemoveActivityAsync(tripId, dayNumber, activityName);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"RemoveActivityAsync failed: {ex.Message}");
+                }
+            });
+
+            return Task.FromResult(JsonSerializer.Serialize(new { success = true, message = $"جاري مسح نشاط {activityName} من اليوم الـ {dayNumber}... ثواني وهنعرضلك الرحلة." }));
         }
 
         [KernelFunction("show_trip")]

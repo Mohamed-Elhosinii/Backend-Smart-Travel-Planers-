@@ -85,19 +85,23 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 var hotelDto = await SelectHotelAsync(trip, checkIn, checkOut, hotelBudget, numberOfNights);
 
                 FlightDto? flightDto = null;
+                FlightDto? returnFlightDto = null;
 
                 if (hasOrigin)
                 {
                     try
                     {
-                        flightDto = await SelectFlightAsync(trip, checkIn);
-                        _logger.LogInformation("Flight selected. Airline: {Airline}, FlightNumber: {FlightNumber}", 
-                            flightDto?.AirlineName, flightDto?.FlightNumber);
+                        var flightResult = await SelectFlightAsync(trip, checkIn);
+                        flightDto = flightResult.Outbound;
+                        returnFlightDto = flightResult.Return;
+                        _logger.LogInformation("Flight selected. Airline: {Airline}, FlightNumber: {FlightNumber}, ReturnFlightNumber: {ReturnFlightNumber}", 
+                            flightDto?.AirlineName, flightDto?.FlightNumber, returnFlightDto?.FlightNumber);
                     }
                     catch (Exception ex)
                     {
                         _logger.LogWarning(ex, "Flight selection failed for TripId: {TripId}, but continuing with plan", tripId);
                         flightDto = null;
+                        returnFlightDto = null;
                     }
                 }
 
@@ -109,7 +113,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 AttachWeatherToDays(dayPlans, weather);
 
                 _logger.LogInformation("Persisting plan data. DayCount: {DayCount}", dayPlans.Count);
-                await PersistPlanAsync(trip, hotelDto, flightDto, dayPlans, flightBudget, weather);
+                await PersistPlanAsync(trip, hotelDto, flightDto, returnFlightDto, dayPlans, flightBudget, weather);
 
                 var estimatedTotal =
                     (decimal)(hotelDto?.Price.PricePerNight ?? 0) * Math.Max(numberOfNights, 1)
@@ -150,6 +154,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                     EstimatedTotalCost = estimatedTotal,
                     Hotel = hotelDto is null ? null : MapHotel(hotelDto),
                     Flight = flightDto is null ? null : MapFlight(flightDto, flightBudget),
+                    ReturnFlight = returnFlightDto is null ? null : MapFlight(returnFlightDto, flightBudget),
                     Days = dayPlans,
                     Weather = weather,
                     BudgetWarnings = budgetWarnings,
@@ -160,7 +165,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                         flightDto != null ? flightBudget : 0,
                         dayPlans.Sum(d => d.Activities.Sum(a => a.EstimatedCost))
                     ),
-                    Summary = BuildSummary(trip, hotelDto, flightDto, dayPlans)
+                    Summary = BuildSummary(trip, hotelDto, flightDto, returnFlightDto, dayPlans)
                 };
 
                 _logger.LogInformation("Trip plan built successfully. TripId: {TripId}, EstimatedCost: {EstimatedCost}", tripId, estimatedTotal);
@@ -210,7 +215,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
             return null;
         }
 
-        private async Task<FlightDto?> SelectFlightAsync(Trip trip, string departureDate)
+        private async Task<(FlightDto? Outbound, FlightDto? Return)> SelectFlightAsync(Trip trip, string departureDate)
         {
             try
             {
@@ -226,12 +231,12 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
 
                 var result = TryDeserialize<FlightSearchResult>(json);
 
-                return result?.OutboundFlights.FirstOrDefault();
+                return (result?.OutboundFlights.FirstOrDefault(), result?.ReturnFlights?.FirstOrDefault());
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"SelectFlightAsync failed: {ex.Message}");
-                return null;
+                return (null, null);
             }
         }
 
@@ -471,6 +476,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
             Trip trip,
             GoogleHotelDto? hotel,
             FlightDto? flight,
+            FlightDto? returnFlight,
             List<DayPlanDto> dayPlans,
             decimal flightBudget,
             List<DayWeatherDto> weather)
@@ -515,13 +521,33 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                     AirlineCode = flight.AirlineCode,
                     DepartureTerminal = flight.DepartureTerminal,
                     ArrivalTerminal = flight.ArrivalTerminal,
-                    // The schedule provider returns no ticket price, so persist the
-                    // orchestrator's allocated flight budget as the estimated cost.
                     Price = flightBudget,
                     Status = BookingStatus.Suggested
                 };
 
                 await _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Flight>().AddAsync(flightEntity);
+            }
+
+            if (returnFlight is not null)
+            {
+                var returnFlightEntity = new SmartTravelPlaners.DAL.Entities.Flight
+                {
+                    Id = Guid.NewGuid(),
+                    TripId = trip.Id,
+                    Airline = returnFlight.AirlineName,
+                    FlightNumber = returnFlight.FlightNumber,
+                    Origin = returnFlight.DepartureAirport,
+                    Destination = returnFlight.ArrivalAirport,
+                    DepartureTime = ParseDateTime(returnFlight.DepartureTime),
+                    ArrivalTime = ParseDateTime(returnFlight.ArrivalTime),
+                    AirlineCode = returnFlight.AirlineCode,
+                    DepartureTerminal = returnFlight.DepartureTerminal,
+                    ArrivalTerminal = returnFlight.ArrivalTerminal,
+                    Price = flightBudget,
+                    Status = BookingStatus.Suggested
+                };
+
+                await _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Flight>().AddAsync(returnFlightEntity);
             }
 
             foreach (var dayPlan in dayPlans)
@@ -679,10 +705,11 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
         }
 
         private static string BuildSummary(
-            Trip trip, GoogleHotelDto? hotel, FlightDto? flight, List<DayPlanDto> days)
+            Trip trip, GoogleHotelDto? hotel, FlightDto? flight, FlightDto? returnFlight, List<DayPlanDto> days)
         {
             var hotelPart = hotel is not null ? $"staying at {hotel.Name}" : "no hotel selected";
             var flightPart = flight is not null ? $" with a flight via {flight.AirlineName}" : "";
+            if (returnFlight is not null) flightPart += $" and a return flight via {returnFlight.AirlineName}";
             return $"Trip to {trip.Destination} ({trip.StartDate} - {trip.EndDate}), {hotelPart}{flightPart}, " +
                    $"with {days.Count} day(s) of planned activities.";
         }
@@ -1415,6 +1442,107 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                     IconUrl = w.IconUrl
                 });
             }
+            await _unitOfWork.CompleteAsync();
+        }
+        public async Task RemoveFlightAsync(Guid tripId, string flightType)
+        {
+            var trip = await _unitOfWork.Trips.GetTripWithDetailsAsync(tripId)
+                 ?? throw new Exception($"Trip {tripId} not found");
+
+            var flights = (await _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Flight>()
+                .FindAsync(f => f.TripId == tripId))
+                .OrderBy(f => f.DepartureTime)
+                .ToList();
+
+            var typeLower = flightType.ToLower();
+
+            if (typeLower.Contains("return") || typeLower.Contains("عودة"))
+            {
+                if (flights.Count > 1)
+                {
+                    _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Flight>().Delete(flights.Skip(1).First());
+                }
+            }
+            else if (typeLower.Contains("outbound") || typeLower.Contains("ذهاب"))
+            {
+                if (flights.Any())
+                {
+                    _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Flight>().Delete(flights.First());
+                }
+            }
+            else
+            {
+                foreach (var f in flights)
+                {
+                    _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Flight>().Delete(f);
+                }
+            }
+
+            await _unitOfWork.CompleteAsync();
+            await RecalculateTripBudgetAsync(tripId);
+        }
+
+        public async Task RemoveHotelAsync(Guid tripId)
+        {
+            var trip = await _unitOfWork.Trips.GetTripWithDetailsAsync(tripId)
+                 ?? throw new Exception($"Trip {tripId} not found");
+
+            var hotels = await _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Hotel>()
+                .FindAsync(h => h.TripId == tripId);
+
+            foreach (var h in hotels)
+            {
+                _unitOfWork.Repository<SmartTravelPlaners.DAL.Entities.Hotel>().Delete(h);
+            }
+
+            await _unitOfWork.CompleteAsync();
+            await RecalculateTripBudgetAsync(tripId);
+        }
+
+        public async Task RemoveActivityAsync(Guid tripId, int dayNumber, string activityName)
+        {
+            var tripDay = (await _unitOfWork.Repository<TripDay>()
+                .FindAsync(d => d.TripId == tripId && d.DayNumber == dayNumber))
+                .FirstOrDefault()
+                ?? throw new Exception($"Day {dayNumber} not found for trip {tripId}");
+
+            var activities = await _unitOfWork.Repository<Activity>()
+                .FindAsync(a => a.TripDayId == tripDay.Id);
+
+            var activityToRemove = activities.FirstOrDefault(a => 
+                a.Name.Contains(activityName, StringComparison.OrdinalIgnoreCase) || 
+                activityName.Contains(a.Name, StringComparison.OrdinalIgnoreCase));
+
+            if (activityToRemove != null)
+            {
+                _unitOfWork.Repository<Activity>().Delete(activityToRemove);
+                tripDay.BudgetSpent -= activityToRemove.EstimatedCost;
+                _unitOfWork.Repository<TripDay>().Update(tripDay);
+                await _unitOfWork.CompleteAsync();
+
+                await RecalculateTripBudgetAsync(tripId);
+            }
+        }
+
+        private async Task RecalculateTripBudgetAsync(Guid tripId)
+        {
+            var updatedTrip = await _unitOfWork.Trips.GetTripWithDetailsAsync(tripId)
+                ?? throw new Exception($"Trip {tripId} not found");
+            var nights = Math.Max(updatedTrip.EndDate.DayNumber - updatedTrip.StartDate.DayNumber, 1);
+            var newHotelEntity = updatedTrip.Hotels.OrderByDescending(h => h.Id).FirstOrDefault();
+            
+            var flightEntity = updatedTrip.Flights.OrderBy(f => f.DepartureTime).FirstOrDefault();
+            
+            var allActivitiesCost = updatedTrip.Days.SelectMany(d => d.Activities).Sum(a => a.EstimatedCost);
+
+            updatedTrip.BudgetSpent =
+                (newHotelEntity?.PricePerNight ?? 0) * nights
+                + (flightEntity?.Price ?? 0)
+                + allActivitiesCost;
+
+            updatedTrip.ConfirmedCost = (newHotelEntity?.PricePerNight ?? 0) * nights;
+
+            _unitOfWork.Trips.Update(updatedTrip);
             await _unitOfWork.CompleteAsync();
         }
 
