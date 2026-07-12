@@ -1,4 +1,6 @@
-﻿using Moq;
+﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using Moq;
 using Moq.Protected;
 using SmartTravelPlaners.BLL.Features.Flight.DTOs;
 using SmartTravelPlaners.BLL.Features.Flight.Services;
@@ -13,23 +15,29 @@ namespace SmartTravelPlaners.Tests.Features.Flight
     {
         private readonly Mock<HttpMessageHandler> _handlerMock;
         private readonly HttpClient _httpClient;
+        private readonly Mock<ILogger<FlightService>> _loggerMock;
+        private readonly Mock<IConfiguration> _configurationMock;
         private readonly FlightService _service;
 
         public FlightServiceTests()
         {
             _handlerMock = new Mock<HttpMessageHandler>();
-
             _httpClient = new HttpClient(_handlerMock.Object);
+            _loggerMock = new Mock<ILogger<FlightService>>();
 
-            _service = new FlightService(_httpClient);
+            _configurationMock = new Mock<IConfiguration>();
+            _configurationMock.Setup(c => c["FlightApiSettings:AeroApiKey"]).Returns("test-aero-key");
+            _configurationMock.Setup(c => c["FlightApiSettings:AirLabsApiKey"]).Returns("test-airlabs-key");
+
+            _service = new FlightService(_httpClient, _loggerMock.Object, _configurationMock.Object);
         }
 
         // ============================================================
-        // GetIataCodeAsync
+        // GetAirportCodesAsync
         // ============================================================
 
         [Fact]
-        public async Task GetIataCodeAsync_ShouldReturnIata_WhenApiSuccess()
+        public async Task GetAirportCodesAsync_ShouldReturnCodes_WhenApiSuccess()
         {
             var responseObj = new
             {
@@ -37,25 +45,49 @@ namespace SmartTravelPlaners.Tests.Features.Flight
                 {
                     airports = new[]
                     {
-                        new { iata_code = "CAI" }
+                        new { iata_code = "CAI", icao_code = "HECA" }
                     }
                 }
             };
 
             SetupResponse(HttpStatusCode.OK, responseObj);
 
-            var result = await _service.GetIataCodeAsync("Cairo");
+            var result = await _service.GetAirportCodesAsync("Alexandria");
 
-            Assert.Equal("CAI", result);
+            Assert.Equal("CAI", result.Iata);
+            Assert.Equal("HECA", result.Icao);
         }
 
         [Fact]
-        public async Task GetIataCodeAsync_ShouldThrow_WhenApiFails()
+        public async Task GetAirportCodesAsync_ShouldReturnFromFallback_WhenCountryKnown()
+        {
+            // No HTTP call should happen because "Egypt" exists in the fallback map
+            var result = await _service.GetAirportCodesAsync("Egypt");
+
+            Assert.Equal("CAI", result.Iata);
+            Assert.Equal("HECA", result.Icao);
+
+            _handlerMock.Protected().Verify(
+                "SendAsync",
+                Times.Never(),
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>());
+        }
+
+        [Fact]
+        public async Task GetAirportCodesAsync_ShouldThrow_WhenApiFails()
         {
             SetupResponse(HttpStatusCode.BadRequest, null);
 
             await Assert.ThrowsAsync<Exception>(() =>
-                _service.GetIataCodeAsync("Cairo"));
+                _service.GetAirportCodesAsync("Alexandria"));
+        }
+
+        [Fact]
+        public async Task GetAirportCodesAsync_ShouldThrow_WhenCityNameEmpty()
+        {
+            await Assert.ThrowsAsync<Exception>(() =>
+                _service.GetAirportCodesAsync(""));
         }
 
         // ============================================================
@@ -69,8 +101,8 @@ namespace SmartTravelPlaners.Tests.Features.Flight
 
             var request = new FlightSearchRequest
             {
-                DepartureCity = "Cairo",
-                ArrivalCity = "Paris",
+                DepartureCity = "Alexandria",
+                ArrivalCity = "Marseille",
                 DepartureDate = "2026-07-01",
                 TripType = TripType.OneWay
             };
@@ -94,8 +126,8 @@ namespace SmartTravelPlaners.Tests.Features.Flight
 
             var request = new FlightSearchRequest
             {
-                DepartureCity = "Cairo",
-                ArrivalCity = "Paris",
+                DepartureCity = "Alexandria",
+                ArrivalCity = "Marseille",
                 DepartureDate = "2026-07-01",
                 ReturnDate = "2026-07-05",
                 TripType = TripType.RoundTrip
@@ -115,8 +147,8 @@ namespace SmartTravelPlaners.Tests.Features.Flight
 
             var request = new FlightSearchRequest
             {
-                DepartureCity = "Cairo",
-                ArrivalCity = "Paris",
+                DepartureCity = "Alexandria",
+                ArrivalCity = "Marseille",
                 DepartureDate = "2026-07-01",
                 TripType = TripType.RoundTrip
             };
@@ -141,12 +173,11 @@ namespace SmartTravelPlaners.Tests.Features.Flight
                 {
                     StatusCode = status,
                     Content = content == null
-                        ? null
+                        ? new StringContent("")
                         : new StringContent(JsonSerializer.Serialize(content), Encoding.UTF8, "application/json")
                 });
         }
 
-        
         private void SetupMultiResponses()
         {
             var callCount = 0;
@@ -161,10 +192,10 @@ namespace SmartTravelPlaners.Tests.Features.Flight
                 {
                     callCount++;
 
-                    // 1 & 2 → AirLabs
+                    // 1 & 2 → AirLabs (city -> iata/icao resolution)
                     if (callCount <= 2)
                     {
-                        var iata = callCount == 1 ? "CAI" : "CDG";
+                        var (iata, icao) = callCount == 1 ? ("CAI", "HECA") : ("CDG", "LFPG");
 
                         var responseObj = new
                         {
@@ -172,7 +203,7 @@ namespace SmartTravelPlaners.Tests.Features.Flight
                             {
                                 airports = new[]
                                 {
-                                    new { iata_code = iata }
+                                    new { iata_code = iata, icao_code = icao }
                                 }
                             }
                         };
@@ -180,7 +211,7 @@ namespace SmartTravelPlaners.Tests.Features.Flight
                         return CreateResponse(HttpStatusCode.OK, responseObj);
                     }
 
-                    // 3 & 4 → AeroDataBox
+                    // 3+ → AeroDataBox (morning/evening windows, for outbound and possibly return)
                     var flightsObj = new
                     {
                         departures = new[]
@@ -188,7 +219,7 @@ namespace SmartTravelPlaners.Tests.Features.Flight
                             new
                             {
                                 number = "MS700",
-                                airline = new { name = "EgyptAir" },
+                                airline = new { name = "EgyptAir", iata = "MS" },
                                 arrival = new
                                 {
                                     airport = new { iata = "CDG" },
@@ -199,7 +230,7 @@ namespace SmartTravelPlaners.Tests.Features.Flight
                                     scheduledTime = new { local = "2026-07-01T08:00:00" }
                                 },
                                 status = "Scheduled",
-                                aircraft = new { model = "Boeing 737" }
+                                isCargo = false
                             }
                         }
                     };

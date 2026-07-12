@@ -1,5 +1,7 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using Moq;
 using SmartTravelPlaners.BLL.Features.Subscription.DTOs;
 using SmartTravelPlaners.BLL.Features.Subscription.Interfaces;
@@ -12,12 +14,15 @@ namespace SmartTravelPlaners.Tests.Controllers
     public class SubscriptionControllerTests
     {
         private readonly Mock<ISubscriptionService> _serviceMock;
+        private readonly Mock<ILogger<SubscriptionController>> _loggerMock;
         private readonly SubscriptionController _controller;
 
         public SubscriptionControllerTests()
         {
             _serviceMock = new Mock<ISubscriptionService>();
-            _controller = new SubscriptionController(_serviceMock.Object);
+            _loggerMock = new Mock<ILogger<SubscriptionController>>();
+            _controller = new SubscriptionController(_serviceMock.Object, _loggerMock.Object);
+
         }
 
         private void SetupUser(string userId = "user-1")

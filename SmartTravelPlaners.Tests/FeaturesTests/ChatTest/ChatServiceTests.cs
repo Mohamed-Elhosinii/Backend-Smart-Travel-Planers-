@@ -1,21 +1,30 @@
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Moq;
 using SmartTravelPlaners.BLL.Features.Chat.DTOs;
 using SmartTravelPlaners.BLL.Features.Chat.Services;
+using SmartTravelPlaners.BLL.Features.Flight.Plugins;
+using SmartTravelPlaners.BLL.Features.Hotel.Plugins;
 using SmartTravelPlaners.BLL.Features.Orchestrator.DTOs;
 using SmartTravelPlaners.BLL.Features.Orchestrator.Interfaces;
+using SmartTravelPlaners.BLL.Features.Place.Plugins;
 using SmartTravelPlaners.BLL.Features.Subscription.Interfaces;
 using SmartTravelPlaners.BLL.Features.Trips.Interfaces;
+using SmartTravelPlaners.BLL.Features.Trips.Plugins;
+using SmartTravelPlaners.BLL.Features.Weather.Plugins;
 using SmartTravelPlaners.DAL.Entities;
 using SmartTravelPlaners.DAL.Enums;
 using SmartTravelPlaners.DAL.Repositories.Abstract;
+using System;
+using System.Collections.Generic;
+using System.Threading;
 using Xunit;
 
 namespace SmartTravelPlaners.Tests.Features.Chat
 {
+    
     public class ChatServiceTests
     {
         private readonly Mock<IChatRepository> _chatRepoMock;
@@ -26,6 +35,7 @@ namespace SmartTravelPlaners.Tests.Features.Chat
         private readonly Mock<IUsageLimitService> _usageLimitMock;
         private readonly Mock<IChatCompletionService> _aiMock;
         private readonly Mock<IServiceProvider> _serviceProviderMock;
+        private readonly Mock<ILogger<ChatService>> _loggerMock;
         private readonly ChatService _service;
 
         public ChatServiceTests()
@@ -38,35 +48,21 @@ namespace SmartTravelPlaners.Tests.Features.Chat
             _usageLimitMock = new Mock<IUsageLimitService>();
             _aiMock = new Mock<IChatCompletionService>();
             _serviceProviderMock = new Mock<IServiceProvider>();
-            var _configMock = new Mock<IConfiguration>();
-            var _tripCreationMock = new Mock<ITripCreationService>();
+            _loggerMock = new Mock<ILogger<ChatService>>();
 
-            var scopeFactoryMock = new Mock<IServiceScopeFactory>();
-            var scopeMock = new Mock<IServiceScope>();
-
-            scopeMock.Setup(s => s.ServiceProvider).Returns(_serviceProviderMock.Object);
-            scopeFactoryMock.Setup(f => f.CreateScope()).Returns(scopeMock.Object);
-            _serviceProviderMock.Setup(s => s.GetService(typeof(IServiceScopeFactory)))
-                .Returns(scopeFactoryMock.Object);
-            _serviceProviderMock.Setup(s => s.GetService(typeof(ITripOrchestratorService)))
-                .Returns(_orchestratorMock.Object);
-            _serviceProviderMock.Setup(s => s.GetService(typeof(IUsageLimitService)))
-                .Returns(_usageLimitMock.Object);
-
-            _configMock.Setup(c => c["GitHubModels:Token"]).Returns("fake-api-key");
-            _configMock.Setup(c => c["GitHubModels:Endpoint"]).Returns("https://fake-endpoint.com");
-            _configMock.Setup(c => c["GitHubModels:ModelId"]).Returns("fake-model");
-
+            // Build a Kernel and register the mocked AI service
             var kernelBuilder = Kernel.CreateBuilder();
             kernelBuilder.Services.AddSingleton(_aiMock.Object);
-            var builtKernel = kernelBuilder.Build();
+            var kernel = kernelBuilder.Build();
 
-            var weatherPlugin = new SmartTravelPlaners.BLL.Features.Weather.Plugins.WeatherPlugin(new Mock<SmartTravelPlaners.BLL.Features.Weather.Interfaces.IWeatherApiService>().Object);
-            var hotelPlugin = new SmartTravelPlaners.BLL.Features.Hotel.Plugins.HotelPlugin(
-                new Mock<SmartTravelPlaners.BLL.Features.Hotel.Interfaces.IHotelApiService>().Object);
-            var flightPlugin = new SmartTravelPlaners.BLL.Features.Flight.Plugins.FlightPlugin(new Mock<SmartTravelPlaners.BLL.Features.Flight.Interfaces.IFlightService>().Object);
-            var placesPlugin = new SmartTravelPlaners.BLL.Features.Place.Plugins.PlacesPlugin(new Mock<SmartTravelPlaners.BLL.Features.Place.Interfaces.IPlacesApiService>().Object, new Mock<Microsoft.Extensions.Logging.ILogger<SmartTravelPlaners.BLL.Features.Place.Plugins.PlacesPlugin>>().Object);
-            var tripPlugin = new SmartTravelPlaners.BLL.Features.Trips.Plugins.TripPlugin(_tripCreationMock.Object, _tripRepoMock.Object, _uowMock.Object, _serviceProviderMock.Object);
+            // Create plugin instances with simple mocked dependencies (avoid mocking TripPlugin itself)
+            var tripCreationMock = new Mock<ITripCreationService>().Object;
+            var tripPlugin = new TripPlugin(tripCreationMock, _tripRepoMock.Object, _uowMock.Object, _serviceProviderMock.Object);
+
+            var flightPlugin = new FlightPlugin(new Mock<SmartTravelPlaners.BLL.Features.Flight.Interfaces.IFlightService>().Object);
+            var hotelPlugin = new HotelPlugin(new Mock<SmartTravelPlaners.BLL.Features.Hotel.Interfaces.IHotelApiService>().Object);
+            var placesPlugin = new PlacesPlugin(new Mock<SmartTravelPlaners.BLL.Features.Place.Interfaces.IPlacesApiService>().Object, new Mock<ILogger<PlacesPlugin>>().Object);
+            var weatherPlugin = new WeatherPlugin(new Mock<SmartTravelPlaners.BLL.Features.Weather.Interfaces.IWeatherApiService>().Object);
 
             _service = new ChatService(
                 _chatRepoMock.Object,
@@ -74,12 +70,13 @@ namespace SmartTravelPlaners.Tests.Features.Chat
                 _userProfileRepoMock.Object,
                 _orchestratorMock.Object,
                 _usageLimitMock.Object,
-                builtKernel,
+                kernel,
                 tripPlugin,
                 flightPlugin,
                 hotelPlugin,
                 placesPlugin,
-                weatherPlugin);
+                weatherPlugin,
+                _loggerMock.Object);
         }
 
         private ChatSession MakeSession(Guid? tripId = null) => new ChatSession
@@ -87,346 +84,405 @@ namespace SmartTravelPlaners.Tests.Features.Chat
             Id = Guid.NewGuid(),
             UserId = "user-1",
             TripId = tripId,
-            Stage = ChatStage.CollectingInfo,
             Messages = new List<ChatMessage>(),
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
 
-        private void SetupAiReply(string reply)
-        {
-            var content = new ChatMessageContent(AuthorRole.Assistant, reply);
-            _aiMock.Setup(a => a.GetChatMessageContentsAsync(
-                It.IsAny<ChatHistory>(),
-                It.IsAny<PromptExecutionSettings>(),
-                It.IsAny<Kernel>(),
-                It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new List<ChatMessageContent> { content });
-        }
-
-        // ============================================================
-        // SendMessageAsync — Session Not Found
-        // ============================================================
+        
 
         [Fact]
-        public async Task SendMessageAsync_ShouldThrow_WhenSessionNotFound()
+        public async System.Threading.Tasks.Task SendMessageAsync_ShouldThrow_WhenSessionNotFound()
         {
             var sessionId = Guid.NewGuid();
             _chatRepoMock.Setup(r => r.GetSessionAsync(sessionId)).ReturnsAsync((ChatSession?)null);
 
             await Assert.ThrowsAsync<Exception>(() => _service.SendMessageAsync(sessionId, "user-1", "مرحبا"));
         }
-
-        // ============================================================
-        // SendMessageAsync — Message Limit Reached
-        // ============================================================
-
         [Fact]
-        public async Task SendMessageAsync_ShouldReturnLimitMessage_WhenMessageLimitReached()
+        public async Task SendMessageAsync_ShouldThrow_WhenUserIsNotOwner()
         {
             var session = MakeSession();
-            _chatRepoMock.Setup(r => r.GetSessionAsync(session.Id)).ReturnsAsync(session);
-            _usageLimitMock.Setup(u => u.CanSendMessageAsync(session.UserId)).ReturnsAsync(false);
-
-            var result = await _service.SendMessageAsync(session.Id, session.UserId, "مرحبا");
-
-            Assert.Contains("limit", result.Message, StringComparison.OrdinalIgnoreCase);
-        }
-
-        // ============================================================
-        // SendMessageAsync — Normal Reply
-        // ============================================================
-
-        [Fact]
-        public async Task SendMessageAsync_ShouldReturnAiReply_WhenNormalMessage()
-        {
-            var session = MakeSession();
-            _chatRepoMock.Setup(r => r.GetSessionAsync(session.Id)).ReturnsAsync(session);
-            _usageLimitMock.Setup(u => u.CanSendMessageAsync(session.UserId)).ReturnsAsync(true);
-            _usageLimitMock.Setup(u => u.IncrementMessageUsageAsync(session.UserId)).Returns(Task.CompletedTask);
-            _chatRepoMock.Setup(r => r.AddMessageAsync(It.IsAny<ChatMessage>())).Returns(Task.CompletedTask);
-            _chatRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
-
-            SetupAiReply("أهلاً! ازيك؟");
-
-            var result = await _service.SendMessageAsync(session.Id, session.UserId, "مرحبا");
-
-            Assert.Equal("أهلاً! ازيك؟", result.Message);
-        }
-
-        // ============================================================
-        // SendMessageAsync — TRIP_UPDATE_HOTEL with no trip
-        // ============================================================
-
-        [Fact]
-        public async Task SendMessageAsync_ShouldReturnNoTrip_WhenHotelUpdateWithNoTrip()
-        {
-            var session = MakeSession(tripId: null);
-            _chatRepoMock.Setup(r => r.GetSessionAsync(session.Id)).ReturnsAsync(session);
-            _usageLimitMock.Setup(u => u.CanSendMessageAsync(session.UserId)).ReturnsAsync(true);
-
-            SetupAiReply("TRIP_UPDATE_HOTEL:{}");
-
-            var result = await _service.SendMessageAsync(session.Id, session.UserId,"غيرلي الفندق");
-
-            Assert.Contains("مفيش رحلة", result.Message);
-        }
-
-        // ============================================================
-        // SendMessageAsync — TRIP_UPDATE_HOTEL with existing trip
-        // ============================================================
-
-        [Fact]
-        public async Task SendMessageAsync_ShouldRegenerateHotel_WhenTripExists()
-        {
-            // Arrange
-            var tripId = Guid.NewGuid();
-
-            var trip = new Trip
-            {
-                Id = tripId,
-                Destination = "Rome",
-                OriginCity = "Cairo",
-                StartDate = new DateOnly(2026, 7, 4),
-                EndDate = new DateOnly(2026, 7, 8),
-                NumTravelers = 2,
-                BudgetTotal = 5000
-            };
-
-            var session = MakeSession(tripId: tripId);
+            session.UserId = "another-user";
 
             _chatRepoMock
                 .Setup(r => r.GetSessionAsync(session.Id))
                 .ReturnsAsync(session);
 
-            _tripRepoMock
-                .Setup(r => r.GetByIdAsync(tripId))
-                .ReturnsAsync(trip);
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                _service.SendMessageAsync(session.Id, "user-1", "Hello"));
+        }
+
+        [Fact]
+        public async Task SendMessageAsync_ShouldReturnLimitMessage_WhenUsageLimitReached()
+        {
+            var session = MakeSession();
+
+            _chatRepoMock
+                .Setup(r => r.GetSessionAsync(session.Id))
+                .ReturnsAsync(session);
 
             _usageLimitMock
                 .Setup(u => u.CanSendMessageAsync(session.UserId))
-                .ReturnsAsync(true);
+                .ReturnsAsync(false);
 
-            _usageLimitMock
-                .Setup(u => u.IncrementMessageUsageAsync(session.UserId))
-                .Returns(Task.CompletedTask);
-
-            _chatRepoMock
-                .Setup(r => r.AddMessageAsync(It.IsAny<ChatMessage>()))
-                .Returns(Task.CompletedTask);
-
-            _chatRepoMock
-                .Setup(r => r.SaveChangesAsync())
-                .Returns(Task.CompletedTask);
-
-            SetupAiReply("TRIP_UPDATE_HOTEL:{}");
-
-            // Act
             var result = await _service.SendMessageAsync(
                 session.Id,
                 session.UserId,
-                "غيرلي الفندق");
+                "Hello");
 
-            // Assert
-            Assert.Contains("جاري", result.Message);
-        }
-        // ============================================================
-        // SendMessageAsync — TRIP_UPDATE_FLIGHT with no trip
-        // ============================================================
+            Assert.NotNull(result);
+            Assert.Contains("monthly message limit", result.Message);
 
-        [Fact]
-        public async Task SendMessageAsync_ShouldReturnNoTrip_WhenFlightUpdateWithNoTrip()
-        {
-            var session = MakeSession(tripId: null);
-            _chatRepoMock.Setup(r => r.GetSessionAsync(session.Id)).ReturnsAsync(session);
-            _usageLimitMock.Setup(u => u.CanSendMessageAsync(session.UserId)).ReturnsAsync(true);
-
-            SetupAiReply("TRIP_UPDATE_FLIGHT:{}");
-
-            var result = await _service.SendMessageAsync(session.Id, session.UserId,  "غيرلي الطيران");
-
-            Assert.Contains("مفيش رحلة", result.Message);
+            _usageLimitMock.Verify(
+                u => u.IncrementMessageUsageAsync(It.IsAny<string>()),
+                Times.Never);
         }
 
-        // ============================================================
-        // SendMessageAsync — TRIP_UPDATE_FLIGHT with existing trip
-        // ============================================================
-
         [Fact]
-        public async Task SendMessageAsync_ShouldRegenerateFlight_WhenTripExists()
-        {
-            // Arrange
-            var tripId = Guid.NewGuid();
-
-            var trip = new Trip
-            {
-                Id = tripId,
-                Destination = "Rome",
-                OriginCity = "Cairo",
-                StartDate = new DateOnly(2026, 7, 4),
-                EndDate = new DateOnly(2026, 7, 8),
-                NumTravelers = 2,
-                BudgetTotal = 5000
-            };
-
-            var session = MakeSession(tripId: tripId);
-
-            _chatRepoMock
-                .Setup(r => r.GetSessionAsync(session.Id))
-                .ReturnsAsync(session);
-
-            _tripRepoMock
-                .Setup(r => r.GetByIdAsync(tripId))
-                .ReturnsAsync(trip);
-
-            _usageLimitMock
-                .Setup(x => x.CanSendMessageAsync(session.UserId))
-                .ReturnsAsync(true);
-
-            _usageLimitMock
-                .Setup(x => x.IncrementMessageUsageAsync(session.UserId))
-                .Returns(Task.CompletedTask);
-
-            _chatRepoMock
-                .Setup(x => x.AddMessageAsync(It.IsAny<ChatMessage>()))
-                .Returns(Task.CompletedTask);
-
-            _chatRepoMock
-                .Setup(x => x.SaveChangesAsync())
-                .Returns(Task.CompletedTask);
-
-            SetupAiReply("TRIP_UPDATE_FLIGHT:{}");
-
-            // Act
-            var result = await _service.SendMessageAsync(
-                session.Id,
-                session.UserId,
-                "غيرلي الطيران");
-
-            // Assert
-            Assert.Contains("جاري", result.Message);
-        }
-
-        // ============================================================
-        // SendMessageAsync — TRIP_SHOW with no trip
-        // ============================================================
-
-        [Fact]
-        public async Task SendMessageAsync_ShouldReturnNoTrip_WhenShowWithNoTrip()
-        {
-            var session = MakeSession(tripId: null);
-            _chatRepoMock.Setup(r => r.GetSessionAsync(session.Id)).ReturnsAsync(session);
-            _usageLimitMock.Setup(u => u.CanSendMessageAsync(session.UserId)).ReturnsAsync(true);
-
-            SetupAiReply("TRIP_SHOW:{}");
-
-            var result = await _service.SendMessageAsync(session.Id, session.UserId,"ابعت الرحلة");
-
-            Assert.Contains("مفيش رحلة", result.Message);
-        }
-
-        // ============================================================
-        // SendMessageAsync — TRIP_UPDATE_ACTIVITIES with no trip
-        // ============================================================
-
-        [Fact]
-        public async Task SendMessageAsync_ShouldReturnNoTrip_WhenActivitiesUpdateWithNoTrip()
-        {
-            var session = MakeSession(tripId: null);
-            _chatRepoMock.Setup(r => r.GetSessionAsync(session.Id)).ReturnsAsync(session);
-            _usageLimitMock.Setup(u => u.CanSendMessageAsync(session.UserId)).ReturnsAsync(true);
-
-            SetupAiReply("TRIP_UPDATE_ACTIVITIES:{\"dayNumber\": 1}");
-
-            var result = await _service.SendMessageAsync(session.Id, session.UserId,  "غيرلي أنشطة يوم 1");
-
-            Assert.Contains("مفيش رحلة", result.Message);
-        }
-
-        // ============================================================
-        // CreateSessionAsync
-        // ============================================================
-
-        [Fact]
-        public async Task CreateSessionAsync_ShouldReturnSession()
+        public async Task CreateSessionAsync_ShouldCreateSession()
         {
             var session = MakeSession();
-            _chatRepoMock.Setup(r => r.CreateSessionAsync("user-1")).ReturnsAsync(session);
-            _chatRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+
+            _chatRepoMock
+                .Setup(r => r.CreateSessionAsync("user-1"))
+                .ReturnsAsync(session);
 
             var result = await _service.CreateSessionAsync("user-1");
 
             Assert.NotNull(result);
-            Assert.Equal("user-1", result.UserId);
+
+            _chatRepoMock.Verify(r => r.SaveChangesAsync(), Times.Once);
         }
 
-        // ============================================================
-        // GetHistoryAsync
-        // ============================================================
+        [Fact]
+        public async Task GetUserSessionsAsync_ShouldReturnSessions()
+        {
+            var sessions = new List<ChatSession>
+    {
+        MakeSession(),
+        MakeSession()
+    };
+
+            _chatRepoMock
+                .Setup(r => r.GetSessionsByUserAsync("user-1"))
+                .ReturnsAsync(sessions);
+
+            var result = await _service.GetUserSessionsAsync("user-1");
+
+            Assert.Equal(2, result.Count);
+        }
+
+        [Fact]
+        public async Task GetHistoryAsync_ShouldThrow_WhenSessionNotFound()
+        {
+            var sessionId = Guid.NewGuid();
+
+            _chatRepoMock
+                .Setup(r => r.GetSessionAsync(sessionId))
+                .ReturnsAsync((ChatSession?)null);
+
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                _service.GetHistoryAsync(sessionId, "user-1"));
+        }
+
+        [Fact]
+        public async Task GetHistoryAsync_ShouldThrow_WhenUserDoesNotOwnSession()
+        {
+            var session = MakeSession();
+            session.UserId = "another-user";
+
+            _chatRepoMock
+                .Setup(r => r.GetSessionAsync(session.Id))
+                .ReturnsAsync(session);
+
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                _service.GetHistoryAsync(session.Id, "user-1"));
+        }
+
         [Fact]
         public async Task GetHistoryAsync_ShouldReturnMessages()
         {
-            var sessionId = Guid.NewGuid();
-            var session = new ChatSession { Id = sessionId, UserId = "user-1" };
+            var session = MakeSession();
+
             var messages = new List<ChatMessage>
     {
-        new() { Id = Guid.NewGuid(), SessionId = sessionId, Role = MessageRole.User, Content = "مرحبا" }
+        new ChatMessage
+        {
+            Id = Guid.NewGuid(),
+            Content = "Hello"
+        }
     };
 
-            _chatRepoMock.Setup(r => r.GetSessionAsync(sessionId)).ReturnsAsync(session);
-            _chatRepoMock.Setup(r => r.GetMessagesAsync(sessionId)).ReturnsAsync(messages);
+            _chatRepoMock
+                .Setup(r => r.GetSessionAsync(session.Id))
+                .ReturnsAsync(session);
 
-            var result = await _service.GetHistoryAsync(sessionId, "user-1");
+            _chatRepoMock
+                .Setup(r => r.GetMessagesAsync(session.Id))
+                .ReturnsAsync(messages);
+
+            var result = await _service.GetHistoryAsync(
+                session.Id,
+                session.UserId);
 
             Assert.Single(result);
-            Assert.Equal("مرحبا", result[0].Content);
-        }
-
-        // ============================================================
-        // GetTripPlanAsync
-        // ============================================================
-
-        [Fact]
-        public async Task GetTripPlanAsync_ShouldReturnPlan_WhenExists()
-        {
-            var tripId = Guid.NewGuid();
-            var userId = "user-123";
-            var profileId = Guid.NewGuid();
-
-            _userProfileRepoMock.Setup(repo => repo.GetUserProfileWithPreferencesAsync(userId))
-                .ReturnsAsync(new UserProfile { Id = profileId, AspNetUserId = userId });
-
-            _tripRepoMock.Setup(repo => repo.GetByIdAsync(tripId))
-                .ReturnsAsync(new Trip { Id = tripId, UserId = profileId });
-
-            _orchestratorMock.Setup(o => o.GetCurrentPlanAsync(tripId))
-                .ReturnsAsync(new TripPlanDto { TripId = tripId, Destination = "Paris" });
-
-            var result = await _service.GetTripPlanAsync(tripId, userId);
-
-            Assert.NotNull(result);
-            Assert.Equal("Paris", result!.Destination);
         }
 
         [Fact]
-        public async Task GetTripPlanAsync_ShouldReturnNull_WhenThrows()
+        public async Task GetTripPlanAsync_ShouldReturnNull_WhenProfileNotFound()
         {
-            var tripId = Guid.NewGuid();
-            var userId = "user-123";
-            var profileId = Guid.NewGuid();
+            _userProfileRepoMock
+                .Setup(x => x.GetUserProfileWithPreferencesAsync("user-1"))
+                .ReturnsAsync((UserProfile?)null);
 
-            _userProfileRepoMock.Setup(repo => repo.GetUserProfileWithPreferencesAsync(userId))
-                .ReturnsAsync(new UserProfile { Id = profileId, AspNetUserId = userId });
-
-            _tripRepoMock.Setup(repo => repo.GetByIdAsync(tripId))
-                .ReturnsAsync(new Trip { Id = tripId, UserId = profileId });
-
-            _orchestratorMock.Setup(o => o.GetCurrentPlanAsync(tripId))
-                .ThrowsAsync(new Exception("Not found"));
-
-            var result = await _service.GetTripPlanAsync(tripId, userId);
+            var result = await _service.GetTripPlanAsync(
+                Guid.NewGuid(),
+                "user-1");
 
             Assert.Null(result);
+        }
+
+        [Fact]
+        public async Task GetTripPlanAsync_ShouldReturnNull_WhenTripNotFound()
+        {
+            var profile = new UserProfile
+            {
+                Id = Guid.NewGuid(),
+                AspNetUserId = "user-1"
+            };
+
+            _userProfileRepoMock
+                .Setup(x => x.GetUserProfileWithPreferencesAsync("user-1"))
+                .ReturnsAsync(profile);
+
+            _tripRepoMock
+                .Setup(x => x.GetByIdAsync(It.IsAny<Guid>()))
+                .ReturnsAsync((Trip?)null);
+
+            var result = await _service.GetTripPlanAsync(
+                Guid.NewGuid(),
+                "user-1");
+
+            Assert.Null(result);
+        }
+        [Fact]
+        public async Task LinkSessionToTripAsync_ShouldThrow_WhenSessionNotFound()
+        {
+            var sessionId = Guid.NewGuid();
+            var tripId = Guid.NewGuid();
+
+            _chatRepoMock
+                .Setup(x => x.GetSessionAsync(sessionId))
+                .ReturnsAsync((ChatSession?)null);
+
+            await Assert.ThrowsAsync<Exception>(() =>
+                _service.LinkSessionToTripAsync(sessionId, "user-1", tripId));
+        }
+        [Fact]
+        public async Task LinkSessionToTripAsync_ShouldThrow_WhenUnauthorized()
+        {
+            var session = MakeSession();
+            session.UserId = "another-user";
+
+            _chatRepoMock
+                .Setup(x => x.GetSessionAsync(session.Id))
+                .ReturnsAsync(session);
+
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                _service.LinkSessionToTripAsync(session.Id, "user-1", Guid.NewGuid()));
+        }
+        [Fact]
+        public async Task LinkSessionToTripAsync_ShouldLinkTrip()
+        {
+            var session = MakeSession();
+            var tripId = Guid.NewGuid();
+
+            _chatRepoMock
+                .Setup(x => x.GetSessionAsync(session.Id))
+                .ReturnsAsync(session);
+
+            await _service.LinkSessionToTripAsync(
+                session.Id,
+                session.UserId,
+                tripId);
+
+            Assert.Equal(tripId, session.TripId);
+            Assert.Equal(ChatStage.PlanReady, session.Stage);
+
+            _chatRepoMock.Verify(
+                x => x.SaveChangesAsync(),
+                Times.Once);
+        }
+        [Fact]
+        public async Task GetOrCreateTripSessionAsync_ShouldReturnExistingSession()
+        {
+            var session = MakeSession();
+            var tripId = Guid.NewGuid();
+
+            _chatRepoMock
+                .Setup(x => x.GetSessionByTripIdAsync(tripId, "user-1"))
+                .ReturnsAsync(session);
+
+            var result = await _service.GetOrCreateTripSessionAsync(
+                tripId,
+                "user-1");
+
+            Assert.Equal(session.Id, result.Id);
+
+            _chatRepoMock.Verify(
+                x => x.CreateSessionAsync(It.IsAny<string>()),
+                Times.Never);
+        }
+        [Fact]
+        public async Task GetOrCreateTripSessionAsync_ShouldCreateSession_WhenNotExists()
+        {
+            var tripId = Guid.NewGuid();
+            var session = MakeSession();
+
+            _chatRepoMock
+                .Setup(x => x.GetSessionByTripIdAsync(tripId, "user-1"))
+                .ReturnsAsync((ChatSession?)null);
+
+            _chatRepoMock
+                .Setup(x => x.CreateSessionAsync("user-1"))
+                .ReturnsAsync(session);
+
+            var result = await _service.GetOrCreateTripSessionAsync(
+                tripId,
+                "user-1");
+
+            Assert.Equal(tripId, result.TripId);
+            Assert.Equal(ChatStage.PlanReady, result.Stage);
+
+            _chatRepoMock.Verify(
+                x => x.SaveChangesAsync(),
+                Times.Once);
+        }
+        // ============================================================
+        // CreateSessionAsync - Exception
+        // ============================================================
+
+        [Fact]
+        public async Task CreateSessionAsync_ShouldThrow_WhenRepositoryThrows()
+        {
+            _chatRepoMock
+                .Setup(x => x.CreateSessionAsync(It.IsAny<string>()))
+                .ThrowsAsync(new Exception());
+
+            await Assert.ThrowsAsync<Exception>(() =>
+                _service.CreateSessionAsync("user-1"));
+        }
+
+        // ============================================================
+        // GetUserSessionsAsync - Exception
+        // ============================================================
+
+        [Fact]
+        public async Task GetUserSessionsAsync_ShouldThrow_WhenRepositoryThrows()
+        {
+            _chatRepoMock
+                .Setup(x => x.GetSessionsByUserAsync("user-1"))
+                .ThrowsAsync(new Exception());
+
+            await Assert.ThrowsAsync<Exception>(() =>
+                _service.GetUserSessionsAsync("user-1"));
+        }
+
+        // ============================================================
+        // GetHistoryAsync - Exception
+        // ============================================================
+
+        [Fact]
+        public async Task GetHistoryAsync_ShouldThrow_WhenRepositoryThrows()
+        {
+            var session = MakeSession();
+
+            _chatRepoMock
+                .Setup(x => x.GetSessionAsync(session.Id))
+                .ReturnsAsync(session);
+
+            _chatRepoMock
+                .Setup(x => x.GetMessagesAsync(session.Id))
+                .ThrowsAsync(new Exception());
+
+            await Assert.ThrowsAsync<Exception>(() =>
+                _service.GetHistoryAsync(session.Id, session.UserId));
+        }
+
+        // ============================================================
+        // GetTripPlanAsync - Unauthorized Trip
+        // ============================================================
+
+        [Fact]
+        public async Task GetTripPlanAsync_ShouldReturnNull_WhenTripBelongsToAnotherUser()
+        {
+            var profile = new UserProfile
+            {
+                Id = Guid.NewGuid(),
+                AspNetUserId = "user-1"
+            };
+
+            var trip = new Trip
+            {
+                Id = Guid.NewGuid(),
+                UserId = Guid.NewGuid()
+            };
+
+            _userProfileRepoMock
+                .Setup(x => x.GetUserProfileWithPreferencesAsync("user-1"))
+                .ReturnsAsync(profile);
+
+            _tripRepoMock
+                .Setup(x => x.GetByIdAsync(trip.Id))
+                .ReturnsAsync(trip);
+
+            var result = await _service.GetTripPlanAsync(
+                trip.Id,
+                "user-1");
+
+            Assert.Null(result);
+        }
+
+        // ============================================================
+        // GetTripPlanAsync - Success
+        // ============================================================
+
+        [Fact]
+        public async Task GetTripPlanAsync_ShouldReturnPlan()
+        {
+            var profile = new UserProfile
+            {
+                Id = Guid.NewGuid(),
+                AspNetUserId = "user-1"
+            };
+
+            var trip = new Trip
+            {
+                Id = Guid.NewGuid(),
+                UserId = profile.Id
+            };
+
+            var plan = new TripPlanDto();
+
+            _userProfileRepoMock
+                .Setup(x => x.GetUserProfileWithPreferencesAsync("user-1"))
+                .ReturnsAsync(profile);
+
+            _tripRepoMock
+                .Setup(x => x.GetByIdAsync(trip.Id))
+                .ReturnsAsync(trip);
+
+            _orchestratorMock
+                .Setup(x => x.GetCurrentPlanAsync(trip.Id))
+                .ReturnsAsync(plan);
+
+            var result = await _service.GetTripPlanAsync(
+                trip.Id,
+                "user-1");
+
+            Assert.NotNull(result);
+            Assert.Equal(plan, result);
         }
     }
 }

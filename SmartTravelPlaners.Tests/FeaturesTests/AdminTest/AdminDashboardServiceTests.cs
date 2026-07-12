@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Moq;
 using SmartTravelPlaners.BLL.Features.Admin.Services;
 using SmartTravelPlaners.BLL.Features.Subscription.DTOs;
@@ -18,6 +19,7 @@ namespace SmartTravelPlaners.Tests.Features.Admin
     {
         private readonly ApplicationDbContext _context;
         private readonly Mock<UserManager<ApplicationUser>> _userManagerMock;
+        private readonly Mock<ILogger<AdminDashboardService>> _loggerMock;
         private readonly AdminDashboardService _service;
 
         public AdminDashboardServiceTests()
@@ -31,10 +33,11 @@ namespace SmartTravelPlaners.Tests.Features.Admin
             var store = new Mock<IUserStore<ApplicationUser>>();
             _userManagerMock = new Mock<UserManager<ApplicationUser>>(
                 store.Object, null, null, null, null, null, null, null, null);
+            _loggerMock = new Mock<ILogger<AdminDashboardService>>();
 
             SeedData();
 
-            _service = new AdminDashboardService(_context, _userManagerMock.Object);
+            _service = new AdminDashboardService(_context, _userManagerMock.Object, _loggerMock.Object);
         }
 
         private void SeedData()

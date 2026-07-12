@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using Moq;
 using SmartTravelPlaners.BLL.Features.Place.DTOs;
 using SmartTravelPlaners.BLL.Features.Place.Interfaces;
@@ -10,12 +11,14 @@ namespace SmartTravelPlaners.Tests.Controllers
     public class PlacesControllerTests
     {
         private readonly Mock<IPlacesApiService> _serviceMock;
+        private readonly Mock<ILogger<PlacesController>> _loggerMock;
         private readonly PlacesController _controller;
 
         public PlacesControllerTests()
         {
             _serviceMock = new Mock<IPlacesApiService>();
-            _controller = new PlacesController(_serviceMock.Object);
+            _loggerMock = new Mock<ILogger<PlacesController>>();
+            _controller = new PlacesController(_serviceMock.Object, _loggerMock.Object);
         }
 
         // ============================================================

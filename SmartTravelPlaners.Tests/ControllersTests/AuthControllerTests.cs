@@ -1,6 +1,8 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using Castle.Core.Logging;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Moq;
 using SmartTravelPlaners.BLL.DTOs.Auth;
 using SmartTravelPlaners.BLL.Services.Abstract;
@@ -14,13 +16,15 @@ namespace SmartTravelPlaners.Tests.Controllers
     {
         private readonly Mock<IAuthService> _serviceMock;
         private readonly Mock<IConfiguration> _configMock;
+        private readonly Mock<ILogger<AuthController>> _loggerMock;
         private readonly AuthController _controller;
 
         public AuthControllerTests()
         {
             _serviceMock = new Mock<IAuthService>();
             _configMock = new Mock<IConfiguration>();
-            _controller = new AuthController(_serviceMock.Object, _configMock.Object);
+            _loggerMock = new Mock<ILogger<AuthController>>();
+            _controller = new AuthController(_serviceMock.Object, _configMock.Object, _loggerMock.Object);
         }
 
         private void SetupUser(string userId = "user-1")

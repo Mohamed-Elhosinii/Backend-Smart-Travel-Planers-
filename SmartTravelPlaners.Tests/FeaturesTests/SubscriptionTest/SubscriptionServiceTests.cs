@@ -1,4 +1,5 @@
-﻿using Moq;
+﻿using Microsoft.Extensions.Logging;
+using Moq;
 using SmartTravelPlaners.BLL.Features.Subscription.Interfaces;
 using SmartTravelPlaners.BLL.Features.Subscription.Services;
 using SmartTravelPlaners.DAL.Entities;
@@ -14,6 +15,7 @@ namespace SmartTravelPlaners.Tests.Features.Payment
         private readonly Mock<IUnitOfWork> _uowMock;
         private readonly Mock<IPaymobService> _paymobMock;
         private readonly Mock<IUsageLimitService> _usageMock;
+        private readonly Mock<ILogger<SubscriptionService>> _loggerMock;
 
         private readonly SubscriptionService _service;
 
@@ -22,12 +24,16 @@ namespace SmartTravelPlaners.Tests.Features.Payment
             _uowMock = new Mock<IUnitOfWork>();
             _paymobMock = new Mock<IPaymobService>();
             _usageMock = new Mock<IUsageLimitService>();
+            _loggerMock = new Mock<ILogger<SubscriptionService>>();
 
             _service = new SubscriptionService(
                 _uowMock.Object,
                 _paymobMock.Object,
-                _usageMock.Object);
+                _usageMock.Object,
+                _loggerMock.Object
+                );
         }
+
         // ============================================================
         // GetPlansAsync
         // ============================================================
@@ -36,9 +42,9 @@ namespace SmartTravelPlaners.Tests.Features.Payment
         {
             // Arrange
             var plans = new List<Plan>
-    {
-        new Plan { Id = Guid.NewGuid(), Name = "Basic", PriceMonthly = 10 }
-    };
+            {
+                new Plan { Id = Guid.NewGuid(), Name = "Basic", PriceMonthly = 10 }
+            };
 
             var repoMock = new Mock<IGenericRepository<Plan>>();
             repoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(plans);
@@ -53,6 +59,7 @@ namespace SmartTravelPlaners.Tests.Features.Payment
             Assert.Single(result);
             Assert.Equal("Basic", result.First().Name);
         }
+
         // ============================================================
         // CreateSubscriptionAsync (Free plan)
         // ============================================================
@@ -94,8 +101,9 @@ namespace SmartTravelPlaners.Tests.Features.Payment
             Assert.Null(result);
             _uowMock.Verify(u => u.CompleteAsync(), Times.Once);
         }
+
         // ============================================================
-        // CreateSubscriptionAsync(Paid Plan)
+        // CreateSubscriptionAsync (Paid Plan)
         // ============================================================
         [Fact]
         public async Task CreateSubscriptionAsync_ShouldReturnPaymentUrl_ForPaidPlan()
@@ -132,8 +140,9 @@ namespace SmartTravelPlaners.Tests.Features.Payment
             _uowMock.Setup(u => u.UserProfiles.FindAsync(It.IsAny<Expression<Func<UserProfile, bool>>>()))
                 .ReturnsAsync(new List<UserProfile> { userProfile });
 
+            // InitiatePaymentAsync takes the UserProfile (not a string) as its first argument
             _paymobMock.Setup(p => p.InitiatePaymentAsync(
-                It.IsAny<string>(),
+                It.IsAny<UserProfile>(),
                 It.IsAny<Plan>(),
                 It.IsAny<Guid>(),
                 It.IsAny<string>()))
@@ -145,8 +154,48 @@ namespace SmartTravelPlaners.Tests.Features.Payment
             // Assert
             Assert.Equal("payment-url", result);
         }
+
         // ============================================================
-        // CancelSubscriptionAsync(Refund)
+        // CreateSubscriptionAsync — Already active on same/better plan
+        // ============================================================
+        [Fact]
+        public async Task CreateSubscriptionAsync_ShouldThrow_WhenDowngradingOrResubscribingToActivePlan()
+        {
+            var currentPlanId = Guid.NewGuid();
+            var newPlanId = Guid.NewGuid();
+
+            var currentPlan = new Plan { Id = currentPlanId, PriceMonthly = 100 };
+            var newPlan = new Plan { Id = newPlanId, PriceMonthly = 50 };
+
+            var userProfile = new UserProfile { Id = Guid.NewGuid(), AspNetUserId = "user1" };
+
+            var existingSub = new Subscription
+            {
+                Id = Guid.NewGuid(),
+                UserProfileId = userProfile.Id,
+                PlanId = currentPlanId,
+                Status = SubscriptionStatus.Active
+            };
+
+            var planRepo = new Mock<IGenericRepository<Plan>>();
+            planRepo.Setup(r => r.GetByIdAsync(newPlanId)).ReturnsAsync(newPlan);
+            planRepo.Setup(r => r.GetByIdAsync(currentPlanId)).ReturnsAsync(currentPlan);
+
+            var subRepo = new Mock<IGenericRepository<Subscription>>();
+            subRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Subscription, bool>>>()))
+                .ReturnsAsync(new List<Subscription> { existingSub });
+
+            _uowMock.Setup(u => u.Repository<Plan>()).Returns(planRepo.Object);
+            _uowMock.Setup(u => u.Repository<Subscription>()).Returns(subRepo.Object);
+            _uowMock.Setup(u => u.UserProfiles.FindAsync(It.IsAny<Expression<Func<UserProfile, bool>>>()))
+                .ReturnsAsync(new List<UserProfile> { userProfile });
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                _service.CreateSubscriptionAsync("user1", newPlanId));
+        }
+
+        // ============================================================
+        // CancelSubscriptionAsync (Refund)
         // ============================================================
         [Fact]
         public async Task CancelSubscriptionAsync_ShouldRefundAndCancel()
@@ -170,7 +219,10 @@ namespace SmartTravelPlaners.Tests.Features.Payment
                 SubscriptionId = sub.Id,
                 Status = "paid",
                 PaymobTransactionId = "123",
-                Amount = 100
+                Amount = 100,
+                // Must be recent so daysSinceSubscribed <= 3, otherwise the service
+                // takes the "refund period expired" branch and throws instead.
+                CreatedAt = DateTime.UtcNow
             };
 
             var subRepo = new Mock<IGenericRepository<Subscription>>();
@@ -196,6 +248,132 @@ namespace SmartTravelPlaners.Tests.Features.Payment
             // Assert
             Assert.Equal(SubscriptionStatus.Cancelled, sub.Status);
             Assert.Equal("refunded", transaction.Status);
+        }
+
+        // ============================================================
+        // CancelSubscriptionAsync — Refund window expired → throws
+        // ============================================================
+        [Fact]
+        public async Task CancelSubscriptionAsync_ShouldThrow_WhenRefundWindowExpired()
+        {
+            var userProfile = new UserProfile
+            {
+                Id = Guid.NewGuid(),
+                AspNetUserId = "user1"
+            };
+
+            var sub = new Subscription
+            {
+                Id = Guid.NewGuid(),
+                Status = SubscriptionStatus.Active,
+                UserProfileId = userProfile.Id
+            };
+
+            var transaction = new PaymentTransaction
+            {
+                SubscriptionId = sub.Id,
+                Status = "paid",
+                PaymobTransactionId = "123",
+                Amount = 100,
+                CreatedAt = DateTime.UtcNow.AddDays(-10) // well past the 3-day refund window
+            };
+
+            var subRepo = new Mock<IGenericRepository<Subscription>>();
+            subRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Subscription, bool>>>()))
+                .ReturnsAsync(new List<Subscription> { sub });
+
+            var paymentRepo = new Mock<IGenericRepository<PaymentTransaction>>();
+            paymentRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<PaymentTransaction, bool>>>()))
+                .ReturnsAsync(new List<PaymentTransaction> { transaction });
+
+            _uowMock.Setup(u => u.Repository<Subscription>()).Returns(subRepo.Object);
+            _uowMock.Setup(u => u.Repository<PaymentTransaction>()).Returns(paymentRepo.Object);
+
+            _uowMock.Setup(u => u.UserProfiles.FindAsync(It.IsAny<Expression<Func<UserProfile, bool>>>()))
+                .ReturnsAsync(new List<UserProfile> { userProfile });
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                _service.CancelSubscriptionAsync("user1"));
+
+            _paymobMock.Verify(p => p.RefundPaymentAsync(It.IsAny<string>(), It.IsAny<decimal>()), Times.Never);
+        }
+
+        // ============================================================
+        // ActivateSubscriptionAsync
+        // ============================================================
+        [Fact]
+        public async Task ActivateSubscriptionAsync_ShouldActivate_WhenTransactionPending()
+        {
+            var subscriptionId = Guid.NewGuid();
+            var userProfileId = Guid.NewGuid();
+
+            var transaction = new PaymentTransaction
+            {
+                Id = Guid.NewGuid(),
+                SubscriptionId = subscriptionId,
+                PaymobOrderId = "order-123",
+                Status = "pending"
+            };
+
+            var subscription = new Subscription
+            {
+                Id = subscriptionId,
+                UserProfileId = userProfileId,
+                Status = SubscriptionStatus.PastDue
+            };
+
+            var paymentRepo = new Mock<IGenericRepository<PaymentTransaction>>();
+            paymentRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<PaymentTransaction, bool>>>()))
+                .ReturnsAsync(new List<PaymentTransaction> { transaction });
+
+            var subRepo = new Mock<IGenericRepository<Subscription>>();
+            subRepo.Setup(r => r.GetByIdAsync(subscriptionId)).ReturnsAsync(subscription);
+
+            _uowMock.Setup(u => u.Repository<PaymentTransaction>()).Returns(paymentRepo.Object);
+            _uowMock.Setup(u => u.Repository<Subscription>()).Returns(subRepo.Object);
+            _uowMock.Setup(u => u.UserProfiles.FindAsync(It.IsAny<Expression<Func<UserProfile, bool>>>()))
+                .ReturnsAsync(new List<UserProfile> { new UserProfile { Id = userProfileId, AspNetUserId = "user1" } });
+
+            await _service.ActivateSubscriptionAsync("order-123", "txn-1");
+
+            Assert.Equal("paid", transaction.Status);
+            Assert.Equal(SubscriptionStatus.Active, subscription.Status);
+            _usageMock.Verify(u => u.ResetUsageAsync("user1"), Times.Once);
+        }
+
+        [Fact]
+        public async Task ActivateSubscriptionAsync_ShouldSkip_WhenAlreadyPaid()
+        {
+            var transaction = new PaymentTransaction
+            {
+                Id = Guid.NewGuid(),
+                SubscriptionId = Guid.NewGuid(),
+                PaymobOrderId = "order-123",
+                Status = "paid"
+            };
+
+            var paymentRepo = new Mock<IGenericRepository<PaymentTransaction>>();
+            paymentRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<PaymentTransaction, bool>>>()))
+                .ReturnsAsync(new List<PaymentTransaction> { transaction });
+
+            _uowMock.Setup(u => u.Repository<PaymentTransaction>()).Returns(paymentRepo.Object);
+
+            await _service.ActivateSubscriptionAsync("order-123", "txn-1");
+
+            _uowMock.Verify(u => u.Repository<Subscription>(), Times.Never);
+        }
+
+        [Fact]
+        public async Task ActivateSubscriptionAsync_ShouldThrow_WhenTransactionNotFound()
+        {
+            var paymentRepo = new Mock<IGenericRepository<PaymentTransaction>>();
+            paymentRepo.Setup(r => r.FindAsync(It.IsAny<Expression<Func<PaymentTransaction, bool>>>()))
+                .ReturnsAsync(new List<PaymentTransaction>());
+
+            _uowMock.Setup(u => u.Repository<PaymentTransaction>()).Returns(paymentRepo.Object);
+
+            await Assert.ThrowsAsync<Exception>(() =>
+                _service.ActivateSubscriptionAsync("order-does-not-exist", "txn-1"));
         }
     }
 }

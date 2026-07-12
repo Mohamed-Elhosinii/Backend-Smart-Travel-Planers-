@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using Moq;
 using SmartTravelPlaners.BLL.Features.Flight.DTOs;
 using SmartTravelPlaners.BLL.Features.Flight.Interfaces;
@@ -10,12 +11,15 @@ namespace SmartTravelPlaners.Tests.Controllers
     public class FlightControllerTests
     {
         private readonly Mock<IFlightService> _serviceMock;
+        private readonly Mock<ILogger<FlightController>> _loggerMock;
         private readonly FlightController _controller;
 
         public FlightControllerTests()
         {
             _serviceMock = new Mock<IFlightService>();
-            _controller = new FlightController(_serviceMock.Object);
+            _loggerMock = new Mock<ILogger<FlightController>>();
+            _controller = new FlightController(_serviceMock.Object, _loggerMock.Object);
+          
         }
 
         private FlightSearchResult MakeResult(bool roundTrip = false) => new FlightSearchResult

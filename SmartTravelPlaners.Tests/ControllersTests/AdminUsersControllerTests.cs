@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using Moq;
 using SmartTravelPlaners.BLL.Features.Admin.DTOs;
 using SmartTravelPlaners.BLL.Features.Admin.Interfaces;
@@ -15,11 +16,14 @@ namespace SmartTravelPlaners.Tests.Controllers
     {
         private readonly Mock<IAdminDashboardService> _serviceMock;
         private readonly AdminUsersController _controller;
+        private readonly Mock<ILogger<AdminUsersController>> _loggerMock;
 
         public AdminUsersControllerTests()
         {
             _serviceMock = new Mock<IAdminDashboardService>();
-            _controller = new AdminUsersController(_serviceMock.Object);
+            _loggerMock = new Mock<ILogger<AdminUsersController>>();
+           
+            _controller = new AdminUsersController(_serviceMock.Object, _loggerMock.Object);
         }
 
         // ============================================================

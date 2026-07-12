@@ -69,7 +69,7 @@ namespace SmartTravelPlaners.PL.Controllers
                 
                 // Paymob sends HMAC in query string, but we also check payload just in case
                 var actualHmac = !string.IsNullOrEmpty(hmac) ? hmac : payload.Hmac;
-                
+                    
                 var isValid = _paymobService.VerifyHmac(hmacFields, actualHmac);
 
                 if (!isValid)
