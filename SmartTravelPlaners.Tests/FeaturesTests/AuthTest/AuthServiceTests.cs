@@ -9,6 +9,7 @@ using SmartTravelPlaners.DAL.Context;
 using SmartTravelPlaners.DAL.Entities;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
+using Microsoft.Extensions.Logging;
 
 namespace SmartTravelPlaners.Tests.Features.Auth
 {
@@ -18,6 +19,7 @@ namespace SmartTravelPlaners.Tests.Features.Auth
         private readonly Mock<IConfiguration> _configMock;
         private readonly Mock<IEmailService> _emailMock;
         private readonly Mock<ISubscriptionService> _subscriptionMock;
+        private readonly Mock<ILogger<AuthService>> _loggerMock;
         private readonly ApplicationDbContext _context;
         private readonly AuthService _service;
 
@@ -27,6 +29,7 @@ namespace SmartTravelPlaners.Tests.Features.Auth
             var store = new Mock<IUserStore<ApplicationUser>>();
             _userManagerMock = new Mock<UserManager<ApplicationUser>>(
                 store.Object, null, null, null, null, null, null, null, null);
+
 
             // Configuration Mock
             _configMock = new Mock<IConfiguration>();
@@ -46,23 +49,28 @@ namespace SmartTravelPlaners.Tests.Features.Auth
 
             _emailMock = new Mock<IEmailService>();
             _subscriptionMock = new Mock<ISubscriptionService>();
+            _loggerMock= new Mock<ILogger<AuthService>>();
 
             _service = new AuthService(
                 _userManagerMock.Object,
                 _configMock.Object,
                 _context,
                 _emailMock.Object,
-                _subscriptionMock.Object);
+                _subscriptionMock.Object,
+                _loggerMock.Object
+
+                );
         }
 
         private ApplicationUser MakeUser(string id = "user-1") => new ApplicationUser
-        {
-            Id = id,
-            FullName = "Test User",
-            Email = "test@example.com",
-            UserName = "test@example.com",
-            EmailConfirmed = false
-        };
+            {
+                Id = id,
+                FullName = "Test User",
+                Email = "test@example.com",
+                UserName = "test@example.com",
+                EmailConfirmed = true
+            };  // Default to confirmed for tests that assume successful login
+
 
         // ============================================================
         // RegisterAsync
@@ -273,6 +281,11 @@ namespace SmartTravelPlaners.Tests.Features.Auth
         {
             var user = MakeUser();
             _userManagerMock.Setup(u => u.FindByIdAsync(user.Id)).ReturnsAsync(user);
+
+            // Seed InMemory DbContext with user and profile so GetCurrentUserAsync can load related data
+            _context.Users.Add(user);
+            _context.UserProfiles.Add(new UserProfile { Id = System.Guid.NewGuid(), AspNetUserId = user.Id, CreatedAt = System.DateTime.UtcNow });
+            await _context.SaveChangesAsync();      
 
             var result = await _service.GetCurrentUserAsync(user.Id);
 

@@ -47,7 +47,8 @@ namespace SmartTravelPlaners.Tests.Features.Orchestrator
 
             _hotelPlugin = new HotelPlugin(_hotelApiMock.Object);
             _flightPlugin = new FlightPlugin(_flightApiMock.Object);
-            _placesPlugin = new PlacesPlugin(_placesApiMock.Object, new Mock<Microsoft.Extensions.Logging.ILogger<PlacesPlugin>>().Object);
+            _placesPlugin = new PlacesPlugin(_placesApiMock.Object, 
+            new Mock<Microsoft.Extensions.Logging.ILogger<PlacesPlugin>>().Object);
             _weatherPlugin = new WeatherPlugin(_weatherApiMock.Object);
 
             _hotelRepoMock = new Mock<IGenericRepository<DAL.Entities.Hotel>>();
@@ -85,7 +86,7 @@ namespace SmartTravelPlaners.Tests.Features.Orchestrator
             Hotels = new List<DAL.Entities.Hotel>(),
             Flights = new List<DAL.Entities.Flight>(),
             WeatherDays = new List<WeatherDay>(),
-            Preferences= new List<DAL.Entities.TripPreference>()
+            Preferences = new List<DAL.Entities.TripPreference>()
         };
 
         private void SetupTripWithDetails(Trip trip)
@@ -95,12 +96,21 @@ namespace SmartTravelPlaners.Tests.Features.Orchestrator
 
         private void SetupEmptyHotels()
         {
-            _hotelApiMock.Setup(h => h.FilterHotelsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
-                It.IsAny<decimal>(), It.IsAny<double>(), It.IsAny<List<string>>()))
+            _hotelApiMock.Setup(h => h.FilterHotelsAsync(
+                It.IsAny<string>(),      // location
+                It.IsAny<string>(),      // checkIn
+                It.IsAny<string>(),      // checkOut
+                It.IsAny<decimal?>(),    // maxPrice
+                It.IsAny<decimal?>(),    // minPrice
+                It.IsAny<double?>(),     // minRating
+                It.IsAny<List<string>?>(), // amenities
+                It.IsAny<int>(),         // adults
+                It.IsAny<int>()          // children
+            ))
                 .ReturnsAsync(new List<GoogleHotelDto>());
             _hotelApiMock
-    .Setup(h => h.GetAvailableHotelsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>()))
-    .ReturnsAsync(new List<GoogleHotelDto>());
+                .Setup(h => h.GetAvailableHotelsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>()))
+                .ReturnsAsync(new List<GoogleHotelDto>());
         }
 
         private void SetupEmptyFlights()
@@ -111,13 +121,33 @@ namespace SmartTravelPlaners.Tests.Features.Orchestrator
 
         private void SetupEmptyWeather()
         {
+            // IWeatherApiService.GetWeatherForTripAsync returns Task<object>;
+            // returning a VisualCrossingResponseDto is fine, it gets boxed as object
+            // and re-serialized/deserialized correctly by the orchestrator.
             _weatherApiMock.Setup(w => w.GetWeatherForTripAsync(It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<DateTime>()))
                 .ReturnsAsync(new VisualCrossingResponseDto { Days = new() });
         }
-        private void SetupEmptyPlaces()
+
+        // Covers RegenerateDayActivitiesAsync / SyncDayPlansAsync, which go through
+        // PlacesPlugin.SearchWithImages -> IPlacesApiService.SearchAsync(city, category, limit)
+        private void SetupEmptyPlacesSearch()
         {
             _placesApiMock.Setup(p => p.SearchAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>()))
                 .ReturnsAsync(new List<PlaceDto>());
+        }
+
+        // Covers BuildTripPlanAsync -> BuildDayPlansAsync -> SearchPlacesByCoords ->
+        // PlacesPlugin.SearchByCoordsAsync -> IPlacesApiService.SearchByCoordsAsync(lat, lng, category, limit)
+        private void SetupEmptyPlacesByCoords()
+        {
+            _placesApiMock.Setup(p => p.SearchByCoordsAsync(It.IsAny<double>(), It.IsAny<double>(), It.IsAny<string>(), It.IsAny<int>()))
+                .ReturnsAsync(new List<PlaceDto>());
+        }
+
+        private void SetupEmptyPlaces()
+        {
+            SetupEmptyPlacesSearch();
+            SetupEmptyPlacesByCoords();
         }
 
         // ============================================================
@@ -139,16 +169,18 @@ namespace SmartTravelPlaners.Tests.Features.Orchestrator
             var trip = MakeTrip(hasOrigin: false);
             SetupTripWithDetails(trip);
             SetupEmptyHotels();
-            SetupEmptyFlights();
             SetupEmptyWeather();
             SetupEmptyPlaces();
-
+         
             var result = await _service.BuildTripPlanAsync(trip.Id);
-
+            
             Assert.NotNull(result);
             Assert.Equal(trip.Id, result.TripId);
             Assert.Equal("Paris", result.Destination);
             Assert.Null(result.Flight);
+            _flightApiMock.Verify(f => f.SearchFlightsAsync(It.IsAny<FlightSearchRequest>()), Times.Never);
+            
+
         }
 
         [Fact]
@@ -160,8 +192,17 @@ namespace SmartTravelPlaners.Tests.Features.Orchestrator
             SetupEmptyWeather();
             SetupEmptyPlaces();
 
-            _hotelApiMock.Setup(h => h.FilterHotelsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
-                It.IsAny<decimal>(), It.IsAny<double>(), It.IsAny<List<string>>()))
+            _hotelApiMock.Setup(h => h.FilterHotelsAsync(
+                It.IsAny<string>(),      // location
+                It.IsAny<string>(),      // checkIn
+                It.IsAny<string>(),      // checkOut
+                It.IsAny<decimal?>(),    // maxPrice
+                It.IsAny<decimal?>(),    // minPrice
+                It.IsAny<double?>(),     // minRating
+                It.IsAny<List<string>?>(), // amenities
+                It.IsAny<int>(),         // adults
+                It.IsAny<int>()          // children
+            ))
                 .ReturnsAsync(new List<GoogleHotelDto>
                 {
                     new()
@@ -192,7 +233,6 @@ namespace SmartTravelPlaners.Tests.Features.Orchestrator
             SetupEmptyPlaces();
 
             _flightApiMock.Setup(f => f.SearchFlightsAsync(It.IsAny<FlightSearchRequest>()))
-                
                 .ReturnsAsync(new FlightSearchResult
                 {
                     OutboundFlights = new List<FlightDto>
@@ -243,7 +283,8 @@ namespace SmartTravelPlaners.Tests.Features.Orchestrator
             SetupEmptyHotels();
             SetupEmptyWeather();
 
-            _placesApiMock.Setup(p => p.SearchAsync(It.IsAny<string>(), It.IsAny<string>()))
+            // BuildDayPlansAsync goes through SearchByCoordsAsync, not SearchAsync.
+            _placesApiMock.Setup(p => p.SearchByCoordsAsync(It.IsAny<double>(), It.IsAny<double>(), It.IsAny<string>(), It.IsAny<int>()))
                 .ReturnsAsync(new List<PlaceDto>
                 {
                     new() { FsqPlaceId = "1", Name = "Eiffel Tower", Address = "Paris", Latitude = 48.8, Longitude = 2.3, Images = new() },
@@ -343,12 +384,24 @@ namespace SmartTravelPlaners.Tests.Features.Orchestrator
         {
             var trip = MakeTrip();
             _uowMock.Setup(u => u.Trips.GetTripWithDetailsAsync(trip.Id)).ReturnsAsync(trip);
-            _hotelApiMock.Setup(h => h.FilterHotelsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
-                It.IsAny<decimal>(), It.IsAny<double>(), It.IsAny<List<string>>()))
-                .ReturnsAsync(new List<GoogleHotelDto>());
-            _hotelApiMock.Setup(h => h.GetAvailableHotelsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
-                It.IsAny<int>(), It.IsAny<int>()))
-                .ReturnsAsync(new List<GoogleHotelDto>());
+            _hotelApiMock.Setup(h => h.FilterHotelsAsync(
+                It.IsAny<string>(),      // location
+                It.IsAny<string>(),      // checkIn
+                It.IsAny<string>(),      // checkOut
+                It.IsAny<decimal?>(),    // maxPrice
+                It.IsAny<decimal?>(),    // minPrice
+                It.IsAny<double?>(),     // minRating
+                It.IsAny<List<string>?>(), // amenities
+                It.IsAny<int>(),         // adults
+                It.IsAny<int>()          // children
+            )).ReturnsAsync(new List<GoogleHotelDto>());
+            _hotelApiMock.Setup(h => h.GetAvailableHotelsAsync(
+                It.IsAny<string>(),      // location
+                It.IsAny<string>(),      // checkIn
+                It.IsAny<string>(),      // checkOut
+                It.IsAny<int>(),         // adults
+                It.IsAny<int>()          // children
+            )).ReturnsAsync(new List<GoogleHotelDto>());
 
             var result = await _service.RegenerateHotelAsync(trip.Id);
 
@@ -372,19 +425,27 @@ namespace SmartTravelPlaners.Tests.Features.Orchestrator
             trip.Hotels.Add(existingHotel);
             _uowMock.Setup(u => u.Trips.GetTripWithDetailsAsync(trip.Id)).ReturnsAsync(trip);
 
-            _hotelApiMock.Setup(h => h.FilterHotelsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
-                It.IsAny<decimal>(), It.IsAny<double>(), It.IsAny<List<string>>()))
-                .ReturnsAsync(new List<GoogleHotelDto>
+            _hotelApiMock.Setup(h => h.FilterHotelsAsync(
+                It.IsAny<string>(),      // location
+                It.IsAny<string>(),      // checkIn
+                It.IsAny<string>(),      // checkOut
+                It.IsAny<decimal?>(),    // maxPrice
+                It.IsAny<decimal?>(),    // minPrice
+                It.IsAny<double?>(),     // minRating
+                It.IsAny<List<string>?>(), // amenities
+                It.IsAny<int>(),         // adults
+                It.IsAny<int>()          // children
+            )).ReturnsAsync(new List<GoogleHotelDto>
+            {
+                new()
                 {
-                    new()
-                    {
-                        Name = "New Hotel",
-                        Location = new() { Address = "123 St", Latitude = 48.8, Longitude = 2.3 },
-                        Price = new() { PricePerNight = 100.0 },
-                        Rating = new() { Value = 4.5 },
-                        Images = new()
-                    }
-                });
+                    Name = "New Hotel",
+                    Location = new() { Address = "123 St", Latitude = 48.8, Longitude = 2.3 },
+                    Price = new() { PricePerNight = 100.0 },
+                    Rating = new() { Value = 4.5 },
+                    Images = new()
+                }
+            });
 
             var result = await _service.RegenerateHotelAsync(trip.Id);
 
@@ -393,12 +454,10 @@ namespace SmartTravelPlaners.Tests.Features.Orchestrator
             _hotelRepoMock.Verify(r => r.Update(It.IsAny<DAL.Entities.Hotel>()), Times.Once);
         }
 
-       
         [Fact]
         public async Task RegenerateHotelAsync_ShouldAddNewHotel_WhenNoExistingHotel()
         {
             var trip = MakeTrip();
-           
 
             _uowMock
                 .Setup(u => u.Trips.GetTripWithDetailsAsync(trip.Id))
@@ -406,22 +465,26 @@ namespace SmartTravelPlaners.Tests.Features.Orchestrator
 
             _hotelApiMock
                 .Setup(h => h.FilterHotelsAsync(
-                    It.IsAny<string>(),
-                    It.IsAny<string>(),
-                    It.IsAny<string>(),
-                    It.IsAny<decimal>(),
-                    It.IsAny<double>(),
-                    It.IsAny<List<string>>()))
+                    It.IsAny<string>(),      // location
+                    It.IsAny<string>(),      // checkIn
+                    It.IsAny<string>(),      // checkOut
+                    It.IsAny<decimal?>(),    // maxPrice
+                    It.IsAny<decimal?>(),    // minPrice
+                    It.IsAny<double?>(),     // minRating
+                    It.IsAny<List<string>?>(), // amenities
+                    It.IsAny<int>(),         // adults
+                    It.IsAny<int>()          // children
+                ))
                 .ReturnsAsync(new List<GoogleHotelDto>
                 {
-            new()
-            {
-                Name = "Brand New Hotel",
-                Location = new() { Address = "456 Ave", Latitude = 48.9, Longitude = 2.4 },
-                Price = new() { PricePerNight = 150.0 },
-                Rating = new() { Value = 4.0 },
-                Images = new()
-            }
+                    new()
+                    {
+                        Name = "Brand New Hotel",
+                        Location = new() { Address = "456 Ave", Latitude = 48.9, Longitude = 2.4 },
+                        Price = new() { PricePerNight = 150.0 },
+                        Rating = new() { Value = 4.0 },
+                        Images = new()
+                    }
                 });
 
             DAL.Entities.Hotel? savedHotel = null;
@@ -452,7 +515,7 @@ namespace SmartTravelPlaners.Tests.Features.Orchestrator
 
             var result = await _service.RegenerateFlightAsync(trip.Id);
 
-            Assert.Null(result);
+            Assert.Empty(result);
         }
 
         [Fact]
@@ -469,9 +532,10 @@ namespace SmartTravelPlaners.Tests.Features.Orchestrator
         {
             var trip = MakeTrip(hasOrigin: true);
             _uowMock.Setup(u => u.Trips.GetTripWithDetailsAsync(trip.Id)).ReturnsAsync(trip);
+            _flightRepoMock.Setup(r => r.FindAsync(It.IsAny<Expression<Func<DAL.Entities.Flight, bool>>>()))
+                .ReturnsAsync(new List<DAL.Entities.Flight>());
 
             _flightApiMock.Setup(f => f.SearchFlightsAsync(It.IsAny<FlightSearchRequest>()))
-               
                 .ReturnsAsync(new FlightSearchResult
                 {
                     OutboundFlights = new List<FlightDto>
@@ -484,24 +548,24 @@ namespace SmartTravelPlaners.Tests.Features.Orchestrator
 
             var result = await _service.RegenerateFlightAsync(trip.Id);
 
-            Assert.NotNull(result);
-            Assert.Equal("EgyptAir", result!.AirlineName);
+            Assert.NotEmpty(result);
+            Assert.Equal("EgyptAir", result.First().AirlineName);
             _flightRepoMock.Verify(r => r.AddAsync(It.IsAny<DAL.Entities.Flight>()), Times.Once);
         }
 
-       
-
         [Fact]
-        public async Task RegenerateFlightAsync_ShouldReturnNull_WhenSearchFails()
+        public async Task RegenerateFlightAsync_ShouldReturnEmpty_WhenSearchFails()
         {
             var trip = MakeTrip(hasOrigin: true);
             _uowMock.Setup(u => u.Trips.GetTripWithDetailsAsync(trip.Id)).ReturnsAsync(trip);
+            _flightRepoMock.Setup(r => r.FindAsync(It.IsAny<Expression<Func<DAL.Entities.Flight, bool>>>()))
+                .ReturnsAsync(new List<DAL.Entities.Flight>());
             _flightApiMock.Setup(f => f.SearchFlightsAsync(It.IsAny<FlightSearchRequest>()))
                .ReturnsAsync(new FlightSearchResult { OutboundFlights = new() });
 
             var result = await _service.RegenerateFlightAsync(trip.Id);
 
-            Assert.Null(result);
+            Assert.Empty(result);
         }
 
         // ============================================================
@@ -529,8 +593,7 @@ namespace SmartTravelPlaners.Tests.Features.Orchestrator
             _uowMock.Setup(u => u.Trips.GetTripWithDetailsAsync(trip.Id)).ReturnsAsync(trip);
             _activityRepoMock.Setup(r => r.FindAsync(It.IsAny<Expression<Func<Activity, bool>>>()))
                 .ReturnsAsync(new List<Activity>());
-            _placesApiMock.Setup(p => p.SearchAsync(It.IsAny<string>(), It.IsAny<string>()))
-                .ReturnsAsync(new List<PlaceDto>());
+            SetupEmptyPlacesSearch();
 
             var result = await _service.RegenerateDayActivitiesAsync(trip.Id, 1);
 

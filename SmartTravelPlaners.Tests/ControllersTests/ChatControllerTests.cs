@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using Moq;
 using SmartTravelPlaners.BLL.Features.Chat.DTOs;
 using SmartTravelPlaners.BLL.Features.Chat.Interfaces;
@@ -16,11 +17,13 @@ namespace SmartTravelPlaners.Tests.Controllers
     {
         private readonly Mock<IChatService> _serviceMock;
         private readonly ChatController _controller;
+        private readonly Mock<ILogger<ChatController>> _loggerMock;
 
         public ChatControllerTests()
         {
             _serviceMock = new Mock<IChatService>();
-            _controller = new ChatController(_serviceMock.Object);
+            _loggerMock = new Mock<ILogger<ChatController>>();
+            _controller = new ChatController(_serviceMock.Object, _loggerMock.Object);
         }
 
         private void SetupUser(string userId = "user-1")

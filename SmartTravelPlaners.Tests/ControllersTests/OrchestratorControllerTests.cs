@@ -1,4 +1,6 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Castle.Core.Logging;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using Moq;
 using SmartTravelPlaners.BLL.Features.Orchestrator.DTOs;
 using SmartTravelPlaners.BLL.Features.Orchestrator.Interfaces;
@@ -12,13 +14,15 @@ namespace SmartTravelPlaners.Tests.Controllers
     {
         private readonly Mock<ITripOrchestratorService> _orchestratorMock;
         private readonly Mock<IUnitOfWork> _uowMock;
+      private readonly Mock<ILogger<OrchestratorTestController>> _loggerMock;
         private readonly OrchestratorTestController _controller;
 
         public OrchestratorTestControllerTests()
         {
             _orchestratorMock = new Mock<ITripOrchestratorService>();
             _uowMock = new Mock<IUnitOfWork>();
-            _controller = new OrchestratorTestController(_orchestratorMock.Object, _uowMock.Object);
+            _loggerMock = new Mock<ILogger<OrchestratorTestController>>();
+            _controller = new OrchestratorTestController(_orchestratorMock.Object, _uowMock.Object, _loggerMock.Object);
         }
 
         // ============================================================

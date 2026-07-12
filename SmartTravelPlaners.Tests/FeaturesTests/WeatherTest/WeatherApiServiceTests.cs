@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Options;
+﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using Moq.Protected;
 using SmartTravelPlaners.BLL.Features.Weather.DTOs;
@@ -17,10 +18,12 @@ namespace SmartTravelPlaners.Tests.Features.Weather
         private readonly Mock<HttpMessageHandler> _handlerMock;
         private readonly HttpClient _httpClient;
         private readonly WeatherApiService _service;
+        private readonly Mock<ILogger<WeatherApiService>> _logger;
 
         public WeatherApiServiceTests()
         {
             _handlerMock = new Mock<HttpMessageHandler>();
+            _logger = new Mock<ILogger<WeatherApiService>>();
 
             _httpClient = new HttpClient(_handlerMock.Object)
             {
@@ -33,7 +36,7 @@ namespace SmartTravelPlaners.Tests.Features.Weather
                 ApiKey = "test-key"
             });
 
-            _service = new WeatherApiService(_httpClient, options);
+            _service = new WeatherApiService(_httpClient, options, _logger.Object);
         }
 
         // ============================================================

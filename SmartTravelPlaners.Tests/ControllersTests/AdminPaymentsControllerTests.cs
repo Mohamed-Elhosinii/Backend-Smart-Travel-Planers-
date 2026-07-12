@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using Moq;
 using SmartTravelPlaners.BLL.Features.Admin.DTOs;
 using SmartTravelPlaners.BLL.Features.Admin.Interfaces;
@@ -15,11 +16,13 @@ namespace SmartTravelPlaners.Tests.Controllers
     {
         private readonly Mock<IAdminDashboardService> _serviceMock;
         private readonly AdminPaymentsController _controller;
+        private readonly Mock<ILogger<AdminPaymentsController>> _loggerMock;
 
         public AdminPaymentsControllerTests()
         {
             _serviceMock = new Mock<IAdminDashboardService>();
-            _controller = new AdminPaymentsController(_serviceMock.Object);
+            _loggerMock = new Mock<ILogger<AdminPaymentsController>>();
+            _controller = new AdminPaymentsController(_serviceMock.Object, _loggerMock.Object);
         }
 
         private (IEnumerable<AdminPaymentTransactionDto> transactions, int totalCount) MakeResult()

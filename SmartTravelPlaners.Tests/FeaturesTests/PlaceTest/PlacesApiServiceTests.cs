@@ -1,4 +1,6 @@
-﻿using Microsoft.Extensions.Options;
+﻿using Castle.Core.Logging;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using Moq.Protected;
 using SmartTravelPlaners.BLL.Features.Place.DTOs;
@@ -17,6 +19,7 @@ namespace SmartTravelPlaners.Tests.Features.Place
         private readonly Mock<IHttpClientFactory> _factoryMock;
         private readonly Mock<HttpMessageHandler> _foursquareHandlerMock;
         private readonly Mock<HttpMessageHandler> _serperHandlerMock;
+        private readonly Mock<ILogger<PlacesApiService>> _loggerMock;
 
         private readonly HttpClient _foursquareClient;
         private readonly HttpClient _serperClient;
@@ -44,6 +47,7 @@ namespace SmartTravelPlaners.Tests.Features.Place
 
             _factoryMock.Setup(f => f.CreateClient("Serper"))
                 .Returns(_serperClient);
+            _loggerMock = new Mock<ILogger<PlacesApiService>>();
 
             var fsOptions = Options.Create(new FoursquareSettings
             {
@@ -59,7 +63,8 @@ namespace SmartTravelPlaners.Tests.Features.Place
             _service = new PlacesApiService(
                 _factoryMock.Object,
                 fsOptions,
-                serperOptions);
+                serperOptions,
+                _loggerMock.Object);
         }
 
         // ============================================================

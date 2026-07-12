@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using Moq;
 using SmartTravelPlaners.BLL.Features.Weather.DTOs;
 using SmartTravelPlaners.BLL.Features.Weather.Interfaces;
@@ -11,11 +12,13 @@ namespace SmartTravelPlaners.Tests.Controllers
     {
         private readonly Mock<IWeatherApiService> _serviceMock;
         private readonly WeatherController _controller;
+        private readonly Mock<ILogger<WeatherController>> _loggerMock;
 
         public WeatherControllerTests()
         {
             _serviceMock = new Mock<IWeatherApiService>();
-            _controller = new WeatherController(_serviceMock.Object);
+            _loggerMock = new Mock<ILogger<WeatherController>>();
+            _controller = new WeatherController(_serviceMock.Object, _loggerMock.Object);
         }
 
         // ============================================================

@@ -1,4 +1,5 @@
-﻿using Moq;
+﻿using Microsoft.Extensions.Logging;
+using Moq;
 using SmartTravelPlaners.BLL.Features.Subscription.Services;
 using SmartTravelPlaners.DAL.Entities;
 using SmartTravelPlaners.DAL.Enums;
@@ -11,13 +12,14 @@ namespace SmartTravelPlaners.Tests.Features.Payment
     public class UsageLimitServiceTests
     {
         private readonly Mock<IUnitOfWork> _uowMock;
+        private readonly Mock <ILogger<UsageLimitService>> _loggerMock;
         private readonly UsageLimitService _service;
 
         public UsageLimitServiceTests()
         {
             _uowMock = new Mock<IUnitOfWork>();
-
-            _service = new UsageLimitService(_uowMock.Object);
+            _loggerMock = new Mock<ILogger<UsageLimitService>>();
+            _service = new UsageLimitService(_uowMock.Object, _loggerMock.Object);
         }
 
         // ============================================================

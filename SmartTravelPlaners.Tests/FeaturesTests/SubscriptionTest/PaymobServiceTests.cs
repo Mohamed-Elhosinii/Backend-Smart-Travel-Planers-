@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Options;
+﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using Moq.Protected;
 
@@ -18,6 +19,7 @@ namespace SmartTravelPlaners.Tests.Features.Payment
     {
         private readonly Mock<HttpMessageHandler> _handlerMock;
         private readonly HttpClient _httpClient;
+        private readonly Mock<ILogger<PaymobService>> _loggerMock;
         private readonly PaymobService _service;
 
         public PaymobServiceTests()
@@ -38,8 +40,22 @@ namespace SmartTravelPlaners.Tests.Features.Payment
                 HmacSecret = "secret"
             });
 
-            _service = new PaymobService(_httpClient, options);
+            _loggerMock = new Mock<ILogger<PaymobService>>();
+
+            _service = new PaymobService(_httpClient, options, _loggerMock.Object);
         }
+
+        private UserProfile MakeUserProfile() => new UserProfile
+        {
+            Id = Guid.NewGuid(),
+            AspNetUserId = "user1",
+            AspNetUser = new ApplicationUser
+            {
+                FullName = "Test User",
+                Email = "test@example.com",
+                PhoneNumber = "0100000000"
+            }
+        };
 
         // ============================================================
         // Authenticate
@@ -78,7 +94,26 @@ namespace SmartTravelPlaners.Tests.Features.Payment
         {
             SetupResponse(HttpStatusCode.OK, new { token = "payment-key" });
 
-            var result = await _service.GetPaymentKeyAsync(1, 1000, "token");
+            var userProfile = MakeUserProfile();
+
+            var result = await _service.GetPaymentKeyAsync(1, 1000, "token", userProfile);
+
+            Assert.Equal("payment-key", result);
+        }
+
+        [Fact]
+        public async Task GetPaymentKeyAsync_ShouldUseDefaults_WhenAspNetUserIsNull()
+        {
+            SetupResponse(HttpStatusCode.OK, new { token = "payment-key" });
+
+            var userProfile = new UserProfile
+            {
+                Id = Guid.NewGuid(),
+                AspNetUserId = "user1",
+                AspNetUser = null
+            };
+
+            var result = await _service.GetPaymentKeyAsync(1, 1000, "token", userProfile);
 
             Assert.Equal("payment-key", result);
         }
@@ -97,9 +132,10 @@ namespace SmartTravelPlaners.Tests.Features.Payment
             );
 
             var plan = new Plan { PriceMonthly = 100 };
+            var userProfile = MakeUserProfile();
 
             var result = await _service.InitiatePaymentAsync(
-                "user1",
+                userProfile,
                 plan,
                 Guid.NewGuid(),
                 "order123");
@@ -150,6 +186,20 @@ namespace SmartTravelPlaners.Tests.Features.Payment
             Assert.True(result);
         }
 
+        [Fact]
+        public void VerifyHmac_ShouldReturnFalse_WhenInvalid()
+        {
+            var fields = new Dictionary<string, string>
+            {
+                { "amount_cents", "1000" },
+                { "success", "true" }
+            };
+
+            var result = _service.VerifyHmac(fields, "wrong-hmac");
+
+            Assert.False(result);
+        }
+
         // ============================================================
         // Refund
         // ============================================================
@@ -165,6 +215,18 @@ namespace SmartTravelPlaners.Tests.Features.Payment
             var result = await _service.RefundPaymentAsync("123", 100);
 
             Assert.True(result);
+        }
+
+        [Fact]
+        public async Task RefundPaymentAsync_ShouldThrow_WhenApiFails()
+        {
+            SetupMultipleResponsesWithStatus(
+                (HttpStatusCode.OK, (object)new { token = "auth-token" }),        // auth
+                (HttpStatusCode.BadRequest, (object)new { message = "failed" })   // refund fails
+            );
+
+            await Assert.ThrowsAsync<Exception>(() =>
+                _service.RefundPaymentAsync("123", 100));
         }
 
         // ============================================================
@@ -194,6 +256,21 @@ namespace SmartTravelPlaners.Tests.Features.Payment
             foreach (var r in responses)
             {
                 sequence = sequence.ReturnsAsync(CreateResponse(HttpStatusCode.OK, r));
+            }
+        }
+
+        private void SetupMultipleResponsesWithStatus(params (HttpStatusCode Status, object Content)[] responses)
+        {
+            var sequence = _handlerMock
+                .Protected()
+                .SetupSequence<Task<HttpResponseMessage>>(
+                    "SendAsync",
+                    ItExpr.IsAny<HttpRequestMessage>(),
+                    ItExpr.IsAny<CancellationToken>());
+
+            foreach (var r in responses)
+            {
+                sequence = sequence.ReturnsAsync(CreateResponse(r.Status, r.Content));
             }
         }
 
