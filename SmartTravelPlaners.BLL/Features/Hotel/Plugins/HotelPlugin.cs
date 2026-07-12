@@ -1,5 +1,9 @@
+using System;
+using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using System.Text.Json;
+using System.Threading.Tasks;
 using Microsoft.SemanticKernel;
 using SmartTravelPlaners.BLL.Features.Hotel.Interfaces;
 
@@ -31,9 +35,8 @@ namespace SmartTravelPlaners.BLL.Features.Hotel.Plugins
             if (finalHotels.Count == 0)
                 return JsonSerializer.Serialize(new { message = "No hotels found for this search." });
 
-            return JsonSerializer.Serialize(finalHotels);
+            return SerializePrunedHotels(finalHotels);
         }
-
 
         [KernelFunction("get_hotel_details")]
         [Description("Get full details about a specific hotel by its name or ID from previous search results")]
@@ -44,10 +47,24 @@ namespace SmartTravelPlaners.BLL.Features.Hotel.Plugins
             [Description("Hotel ID or Name from previous search results")] string hotelId)
         {
             var hotel = await _hotelApiService.GetHotelByIdAsync(city, checkIn, checkOut, hotelId);
+            if (hotel is null)
+                return JsonSerializer.Serialize(new { error = "Hotel not found" });
 
-            return hotel is null
-                ? JsonSerializer.Serialize(new { error = "Hotel not found" })
-                : JsonSerializer.Serialize(hotel);
+            var pruned = new {
+                hotel_id = hotel.HotelId,
+                name = hotel.Name,
+                price = hotel.Price?.PricePerNight,
+                rating = hotel.Rating?.Value,
+                stars = hotel.Stars,
+                address = hotel.Location?.Address,
+                lat = hotel.Location?.Latitude,
+                lng = hotel.Location?.Longitude,
+                description = hotel.Description,
+                amenities = hotel.Amenities,
+                images = hotel.Images?.Take(3).ToList()
+            };
+
+            return JsonSerializer.Serialize(pruned);
         }
 
         [KernelFunction("filter_hotels")]
@@ -70,7 +87,7 @@ namespace SmartTravelPlaners.BLL.Features.Hotel.Plugins
             if (hotels.Count == 0)
                 return JsonSerializer.Serialize(new { message = "No hotels matched these filters." });
 
-            return JsonSerializer.Serialize(hotels);
+            return SerializePrunedHotels(hotels);
         }
 
         [KernelFunction("get_hotels_near_location")]
@@ -88,7 +105,7 @@ namespace SmartTravelPlaners.BLL.Features.Hotel.Plugins
             if (hotels.Count == 0)
                 return JsonSerializer.Serialize(new { message = "No hotels found within this radius." });
 
-            return JsonSerializer.Serialize(hotels);
+            return SerializePrunedHotels(hotels);
         }
 
         [KernelFunction("get_similar_hotels")]
@@ -104,7 +121,7 @@ namespace SmartTravelPlaners.BLL.Features.Hotel.Plugins
             if (hotels.Count == 0)
                 return JsonSerializer.Serialize(new { message = "No similar hotels found." });
 
-            return JsonSerializer.Serialize(hotels);
+            return SerializePrunedHotels(hotels);
         }
 
         [KernelFunction("check_hotel_availability")]
@@ -117,6 +134,26 @@ namespace SmartTravelPlaners.BLL.Features.Hotel.Plugins
         {
             var available = await _hotelApiService.CheckAvailabilityAsync(city, checkIn, checkOut, hotelId);
             return available ? "Hotel is available" : "Hotel is not available on these dates";
+        }
+
+        private string SerializePrunedHotels(List<SmartTravelPlaners.BLL.Features.Hotel.DTOs.GoogleHotelDto> hotels, int maxCount = 5)
+        {
+            var pruned = hotels.Take(maxCount).Select(h => new
+            {
+                hotel_id = h.HotelId,
+                name = h.Name,
+                price = h.Price?.PricePerNight,
+                rating = h.Rating?.Value,
+                stars = h.Stars,
+                address = h.Location?.Address,
+                lat = h.Location?.Latitude,
+                lng = h.Location?.Longitude,
+                description = h.Description?.Length > 80 ? h.Description.Substring(0, 80) + "..." : h.Description,
+                amenities = h.Amenities?.Take(3).ToList(),
+                image = h.Images?.FirstOrDefault()
+            }).ToList();
+
+            return JsonSerializer.Serialize(pruned);
         }
     }
 }

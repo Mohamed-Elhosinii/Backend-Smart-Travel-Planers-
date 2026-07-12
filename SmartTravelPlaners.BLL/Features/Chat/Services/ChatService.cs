@@ -134,7 +134,11 @@ namespace SmartTravelPlaners.BLL.Features.Chat.Services
                 // SYSTEM PROMPTS
                 // ===========================
                 history.AddSystemMessage(@"You are a smart travel assistant called TravelBot.
-Talk to the user in the SAME LANGUAGE they use to talk to you, in a friendly and natural way.
+CRITICAL LANGUAGE RULE: You MUST detect the language of the user's last message. 
+- If the user speaks to you in English, you MUST reply in English.
+- If the user speaks to you in Arabic, you MUST reply in Arabic.
+- Always match the user's language. Never switch to another language unless the user explicitly asks you to.
+- Even if a tool returns a message or error in a different language (e.g. Arabic tool responses like 'جاري تجهيز...' or 'عذراً...'), you MUST translate the summary and reply to the user in their own language.
 Your job is to collect travel information to plan a new trip, or help them modify an existing trip plan.
 You have access to a variety of tools (create_trip, update_trip_field, update_hotel, update_flight, update_activities, show_trip) as well as search tools for flights, hotels, places, and weather.
 Use these tools to take any trip actions on behalf of the user. 
@@ -201,6 +205,13 @@ IMPORTANT RULES:
                         history.AddAssistantMessage(msg.Content);
                 }
 
+                // Inject strict language match rule at the end of the history right before the user message
+                bool isUserMsgArabic = ContainsArabic(userMessage);
+                string langPrompt = isUserMsgArabic 
+                    ? "الرجاء الرد باللغة العربية الفصحى حصراً وتجاهل أي لغات أخرى في سجل المحادثة أعلاه."
+                    : "CRITICAL: The user is speaking in English. You MUST respond entirely in English. Ignore the Arabic history or tool messages above.";
+                history.AddSystemMessage(langPrompt);
+
                 history.AddUserMessage(userMessage);
 
                 await _chatRepo.AddMessageAsync(new ChatMessage
@@ -265,9 +276,14 @@ IMPORTANT RULES:
                     var newTrip = await _tripRepo.GetByIdAsync(session.TripId.Value);
                     if (newTrip != null)
                     {
-                        session.Title = string.IsNullOrWhiteSpace(newTrip.OriginCity) 
-                            ? $"رحلة إلى {newTrip.Destination}" 
-                            : $"رحلة من {newTrip.OriginCity} إلى {newTrip.Destination}";
+                        bool isArabic = ContainsArabic(newTrip.Destination) || ContainsArabic(newTrip.OriginCity);
+                        session.Title = isArabic
+                            ? (string.IsNullOrWhiteSpace(newTrip.OriginCity) 
+                                ? $"رحلة إلى {newTrip.Destination}" 
+                                : $"رحلة من {newTrip.OriginCity} إلى {newTrip.Destination}")
+                            : (string.IsNullOrWhiteSpace(newTrip.OriginCity) 
+                                ? $"Trip to {newTrip.Destination}" 
+                                : $"Trip from {newTrip.OriginCity} to {newTrip.Destination}");
 
                         _logger.LogInformation("Trip created and linked to session. TripId: {TripId}, SessionId: {SessionId}", newTrip.Id, sessionId);
                     }
@@ -492,6 +508,16 @@ IMPORTANT RULES:
                     tripId, userId, ex.Message);
                 throw;
             }
+        }
+
+        private static bool ContainsArabic(string? text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return false;
+            foreach (char c in text)
+            {
+                if (c >= 0x0600 && c <= 0x06FF) return true;
+            }
+            return false;
         }
     }
 }
