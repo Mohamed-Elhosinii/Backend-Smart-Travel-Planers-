@@ -142,15 +142,13 @@ namespace SmartTravelPlaners.BLL.Features.Hotel.Plugins
             {
                 hotel_id = h.HotelId,
                 name = h.Name,
-                price = h.Price?.PricePerNight,
-                rating = h.Rating?.Value,
+                price = new { price_per_night = h.Price?.PricePerNight },
+                rating = new { value = h.Rating?.Value },
                 stars = h.Stars,
-                address = h.Location?.Address,
-                lat = h.Location?.Latitude,
-                lng = h.Location?.Longitude,
+                location = new { address = h.Location?.Address, latitude = h.Location?.Latitude, longitude = h.Location?.Longitude },
                 description = h.Description?.Length > 80 ? h.Description.Substring(0, 80) + "..." : h.Description,
                 amenities = h.Amenities?.Take(3).ToList(),
-                image = h.Images?.FirstOrDefault()
+                images = h.Images?.Take(3).ToList()
             }).ToList();
 
             return JsonSerializer.Serialize(pruned);

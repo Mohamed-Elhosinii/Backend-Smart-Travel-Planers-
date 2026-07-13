@@ -1606,7 +1606,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 DayNumber = d.DayNumber,
                 Date = d.Date,
                 BudgetAllocated = d.BudgetAllocated,
-                Activities = d.Activities.Select(a => new ActivityPlanDto
+                Activities = (d.Activities ?? new List<Activity>()).Select(a => new ActivityPlanDto
                 {
                     Id = a.Id,
                     Name = a.Name,
@@ -1627,7 +1627,7 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
             var estimatedTotal =
      (hotelEntity?.PricePerNight ?? 0) * numberOfNights
      + (flightEntity?.Price ?? 0)
-     + dayDtos.Sum(d => d.Activities.Sum(a => a.EstimatedCost));
+     + dayDtos.Sum(d => (d.Activities ?? new List<ActivityPlanDto>()).Sum(a => a.EstimatedCost));
 
             // ConfirmedCost = only actual confirmed prices (hotel only for now)
             var confirmedCost = (hotelEntity?.PricePerNight ?? 0) * numberOfNights;
