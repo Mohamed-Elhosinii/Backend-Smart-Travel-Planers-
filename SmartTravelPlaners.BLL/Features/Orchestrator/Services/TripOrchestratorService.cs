@@ -211,8 +211,11 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
             if (withinBudget != null)
                 return withinBudget;
 
-            
-            return null;
+            // Fallback: return the cheapest available hotel if none are within budget
+            return hotels
+                .Where(h => h.Price.PricePerNight.HasValue)
+                .OrderBy(h => h.Price.PricePerNight.Value)
+                .FirstOrDefault();
         }
 
         private async Task<(FlightDto? Outbound, FlightDto? Return)> SelectFlightAsync(Trip trip, string departureDate)
@@ -498,7 +501,8 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                     CheckIn = trip.StartDate,
                     CheckOut = trip.EndDate,
                     PricePerNight = (decimal)(hotel.Price.PricePerNight ?? 0),
-                    Stars = (int)Math.Round(hotel.Rating.Value ?? 0),
+                    Stars = hotel.Stars ?? 0,
+                    Rating = hotel.Rating?.Value,
                     Status = BookingStatus.Suggested,
                     ImagesJson = hotel.Images != null ? System.Text.Json.JsonSerializer.Serialize(hotel.Images) : "[]"
                 };
@@ -676,7 +680,8 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
         {
             Name = hotel.Name,
             PricePerNight = hotel.Price.PricePerNight,
-            Rating = hotel.Rating.Value,
+            Rating = hotel.Rating?.Value,
+            Stars = hotel.Stars ?? 0,
             Address = hotel.Location.Address,
             Images = hotel.Images
         };
@@ -820,7 +825,18 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
 
             var nextHotel = withinBudget.FirstOrDefault();
             if (nextHotel is null)
-                return null;
+            {
+                // Fallback to the cheapest available alternative hotel
+                nextHotel = hotels
+                    .Where(h => h.Price.PricePerNight.HasValue &&
+                                (currentHotel == null ||
+                                 !string.Equals(h.Name, currentHotel.Name, StringComparison.OrdinalIgnoreCase)))
+                    .OrderBy(h => h.Price.PricePerNight.Value)
+                    .FirstOrDefault();
+
+                if (nextHotel is null)
+                    return null;
+            }
 
             if (currentHotel is not null)
             {
@@ -830,7 +846,8 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 currentHotel.Lat = nextHotel.Location.Latitude;
                 currentHotel.Lng = nextHotel.Location.Longitude;
                 currentHotel.PricePerNight = (decimal)(nextHotel.Price.PricePerNight ?? 0);
-                currentHotel.Stars = (int)Math.Round(nextHotel.Rating.Value ?? 0);
+                currentHotel.Stars = nextHotel.Stars ?? 0;
+                currentHotel.Rating = nextHotel.Rating?.Value;
                 currentHotel.CheckIn = trip.StartDate;   
                 currentHotel.CheckOut = trip.EndDate;    
                 currentHotel.ImagesJson = nextHotel.Images != null ? System.Text.Json.JsonSerializer.Serialize(nextHotel.Images) : "[]";
@@ -1651,7 +1668,8 @@ namespace SmartTravelPlaners.BLL.Features.Orchestrator.Services
                 {
                     Name = hotelEntity.Name,
                     PricePerNight = (double)hotelEntity.PricePerNight,
-                    Rating = hotelEntity.Stars,
+                    Rating = hotelEntity.Rating,
+                    Stars = hotelEntity.Stars,
                     Address = hotelEntity.Address,
                     Images = !string.IsNullOrEmpty(hotelEntity.ImagesJson) ? System.Text.Json.JsonSerializer.Deserialize<List<string>>(hotelEntity.ImagesJson) ?? new List<string>() : new List<string>()
                 },
